@@ -40,12 +40,12 @@ def upload_video():
     file = request.files.get("video")
 
     if not file:
-        return {"status": "error"}
+        return jsonify({"status": "error"})
 
     upload_path = os.path.join(BASE_DIR, "uploaded_video.mp4")
     file.save(upload_path)
 
-    return {"status": "success"}
+    return jsonify({"status": "success"})
 
 @app.route('/video_feed')
 def video_feed():
@@ -106,15 +106,19 @@ def logout():
 
 @app.route("/set-mode/<mode>")
 def set_mode(mode):
-    global CURRENT_MODE
+    global CURRENT_MODE, VIDEO_UPLOADED
 
-    if mode in ["simulation", "video"]:
-        CURRENT_MODE = mode
+    CURRENT_MODE = mode
 
-    return jsonify({
-        "status": "success",
-        "current_mode": CURRENT_MODE
-    })
+    if mode == "simulation":
+        VIDEO_UPLOADED = False
+
+        video_path = os.path.join(BASE_DIR, "uploaded_video.mp4")
+
+        if os.path.exists(video_path):
+            os.remove(video_path)   # 🔥 Delete video automatically
+
+    return jsonify({"current_mode": CURRENT_MODE})
 
 
 # -----------------------------
@@ -124,7 +128,6 @@ def set_mode(mode):
 @app.route("/api/traffic-status")
 def traffic_status():
     data = get_traffic_status(CURRENT_MODE)
-    data["current_mode"] = CURRENT_MODE
     return jsonify(data)
 
 

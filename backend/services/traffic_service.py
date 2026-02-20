@@ -1,25 +1,27 @@
 import random
 import time
+import os
 from services.video_service import detect_vehicles_from_video
 
-# Store last vehicle counts (simple memory)
 previous_counts = {}
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
+VIDEO_PATH = os.path.join(PROJECT_ROOT, "uploaded_video.mp4")
 
 
 def generate_road_data(name, current_mode):
     global previous_counts
 
-    # --------------------------
-    # Mode Based Vehicle Count
-    # --------------------------
+    # VIDEO MODE WITHOUT UPLOAD → STOP
     if current_mode == "video":
+        if not os.path.exists(VIDEO_PATH):
+            return None
         vehicle_count = detect_vehicles_from_video()
     else:
         vehicle_count = random.randint(10, 120)
 
-    # --------------------------
     # Congestion Logic
-    # --------------------------
     if vehicle_count < 30:
         congestion = "Low"
         base_green = 30
@@ -30,9 +32,6 @@ def generate_road_data(name, current_mode):
         congestion = "High"
         base_green = 60
 
-    # --------------------------
-    # Prediction Logic
-    # --------------------------
     previous = previous_counts.get(name, vehicle_count)
 
     if vehicle_count > previous:
@@ -63,26 +62,46 @@ def generate_road_data(name, current_mode):
 
 def get_traffic_status(current_mode):
 
-    roads = [
-        generate_road_data("Road A", current_mode),
-        generate_road_data("Road B", current_mode),
-        generate_road_data("Road C", current_mode),
-        generate_road_data("Road D", current_mode),
-    ]
+    import os
 
-    most_congested = max(roads, key=lambda x: x["vehicle_count"])
+    VIDEO_PATH = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "uploaded_video.mp4"
+    )
 
-    # --------------------------
-    # Adaptive Signal Control
-    # --------------------------
-    for road in roads:
-        if road["road_name"] == most_congested["road_name"]:
-            road["adaptive_green_time"] = road["base_green_time"] + 15
-        else:
-            road["adaptive_green_time"] = max(20, road["base_green_time"] - 5)
+    # 🔴 If video mode but no uploaded file → STOP
+    if current_mode == "video" and not os.path.exists(VIDEO_PATH):
+        return {
+            "video_ready": False,
+            "current_mode": current_mode
+        }
+
+    # Otherwise continue normally
+    if current_mode == "video":
+        vehicle_count = detect_vehicles_from_video()
+    else:
+        vehicle_count = random.randint(10, 120)
+
+    # Congestion logic
+    if vehicle_count < 30:
+        congestion = "Low"
+        base_green = 30
+    elif vehicle_count < 70:
+        congestion = "Medium"
+        base_green = 45
+    else:
+        congestion = "High"
+        base_green = 60
+
+    adaptive_green = base_green + 15
 
     return {
         "timestamp": time.strftime("%H:%M:%S"),
-        "roads": roads,
-        "most_congested_road": most_congested["road_name"]
+        "current_mode": current_mode,
+        "video_ready": True,
+        "roads": [{
+            "vehicle_count": vehicle_count,
+            "congestion_level": congestion,
+            "adaptive_green_time": adaptive_green
+        }]
     }
