@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Smart Traffic Admin Dashboard</title>
+
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .section {
+            margin-top: 30px;
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+
+        .control-panel button,
+        .upload-section button {
+            padding: 10px 18px;
+            border-radius: 6px;
+            border: none;
+            background: #667eea;
+            color: white;
+            cursor: pointer;
+            margin-right: 10px;
+            transition: 0.3s;
+        }
+
+        .control-panel button:hover,
+        .upload-section button:hover {
+            background: #5a67d8;
+        }
+
+        .badge {
+            background: #38a169;
+            padding: 6px 12px;
+            border-radius: 20px;
+            color: white;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        .cards {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            width: 220px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .value {
+            font-size: 24px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        #map {
+            height: 400px;
+            margin-top: 15px;
+        }
+
+        input[type="file"] {
+            margin-right: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>🚦 Smart Traffic Admin Dashboard</h1>
+
+<!-- CONTROL PANEL -->
+<div class="section control-panel">
+    <h2>⚙️ System Controls</h2>
+    <button onclick="setMode('simulation')">Simulation Mode</button>
+    <button onclick="setMode('video')">Video Detection Mode</button>
+    <span class="badge" id="currentModeBadge">Mode: --</span>
+</div>
+
+<!-- VIDEO UPLOAD -->
+<div class="section upload-section">
+    <h2>🎥 Upload Traffic Video</h2>
+    <input type="file" id="videoInput">
+    <button onclick="uploadVideo()">Upload</button>
+</div>
+
+<!-- DASHBOARD CARDS -->
+<div class="section">
+    <div class="cards">
+        <div class="card">
+            Vehicle Count
+            <div class="value" id="vehicleCount">--</div>
+        </div>
+
+        <div class="card">
+            Congestion Level
+            <div class="value" id="congestion">--</div>
+        </div>
+
+        <div class="card">
+            Adaptive Green Time
+            <div class="value" id="greenTime">--</div>
+        </div>
+    </div>
+</div>
+
+<!-- GRAPH -->
+<div class="section">
+    <h2>📊 Traffic Trend</h2>
+    <canvas id="trafficChart" height="100"></canvas>
+</div>
+
+<!-- MAP -->
+<div class="section">
+    <h2>🗺️ City Traffic Map</h2>
+    <div id="map"></div>
+</div>
+
+<!-- LIVE VIDEO -->
+<div class="section">
+    <h2>🎥 Live AI Detection Feed</h2>
+    <img src="{{ url_for('video_feed') }}" width="100%" />
+</div>
+
+<script>
+// ================= GRAPH =================
+
+let vehicleData = [];
+let timeLabels = [];
+
+const ctx = document.getElementById('trafficChart').getContext('2d');
+
+const trafficChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: timeLabels,
+        datasets: [{
+            label: 'Vehicle Count',
+            data: vehicleData,
+            borderWidth: 2,
+            tension: 0.3
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: { y: { beginAtZero: true } }
+    }
+});
+
+// ================= MAP =================
+
+const map = L.map('map').setView([28.6139, 77.2090], 13);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+let markers = {};
+
+// ================= MODE SWITCH =================
+
+function setMode(mode) {
+    fetch(`/set-mode/${mode}`)
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById("currentModeBadge").innerText =
+                "Mode: " + data.current_mode.toUpperCase();
+        });
+}
+
+// ================= VIDEO UPLOAD =================
+
+function uploadVideo() {
+    const fileInput = document.getElementById("videoInput");
+    const file = fileInput.files[0];
+
+    if (!file) {
+        alert("Please select a video file first.");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("video", file);
+
+    fetch("/upload-video", {
+        method: "POST",
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        alert("Video Uploaded Successfully!");
+    });
+}
+
+// ================= TRAFFIC LOAD =================
+
+function loadTraffic() {
+    fetch("/api/traffic-status")
+        .then(res => res.json())
+        .then(data => {
+
+            if (!data.roads || data.roads.length === 0) return;
+
+            document.getElementById("currentModeBadge").innerText =
+                "Mode: " + data.current_mode.toUpperCase();
+
+            const roads = data.roads;
+            const primaryRoad = roads[0];
+
+            document.getElementById("vehicleCount").innerText =
+                primaryRoad.vehicle_count;
+
+            document.getElementById("greenTime").innerText =
+                primaryRoad.adaptive_green_time + " sec";
+
+            const congestionElement = document.getElementById("congestion");
+            congestionElement.innerText = primaryRoad.congestion_level;
+
+            if (primaryRoad.congestion_level === "Low") {
+                congestionElement.style.color = "green";
+            } else if (primaryRoad.congestion_level === "Medium") {
+                congestionElement.style.color = "orange";
+            } else {
+                congestionElement.style.color = "red";
+            }
+
+            // Graph Update
+            timeLabels.push(data.timestamp);
+            vehicleData.push(primaryRoad.vehicle_count);
+
+            if (timeLabels.length > 10) {
+                timeLabels.shift();
+                vehicleData.shift();
+            }
+
+            trafficChart.update();
+
+            // Map Update
+            roads.forEach((road, index) => {
+
+                const lat = 28.60 + (index * 0.01);
+                const lng = 77.20 + (index * 0.01);
+
+                if (!markers[road.road_name]) {
+                    markers[road.road_name] = L.circleMarker([lat, lng], {
+                        radius: 10,
+                        color: "green",
+                        weight: 2
+                    }).addTo(map);
+                }
+
+                let color;
+                if (road.congestion_level === "Low") color = "green";
+                else if (road.congestion_level === "Medium") color = "orange";
+                else color = "red";
+
+                markers[road.road_name].setStyle({
+                    color: color,
+                    radius: road.road_name === data.most_congested_road ? 14 : 10,
+                    weight: road.road_name === data.most_congested_road ? 4 : 2
+                });
+
+                markers[road.road_name].bindPopup(
+                    `<b>${road.road_name}</b><br>
+                    Vehicles: ${road.vehicle_count}<br>
+                    Predicted: ${road.predicted_congestion}<br>
+                    Adaptive Green: ${road.adaptive_green_time} sec`
+                );
+            });
+
+        });
+}
+
+setInterval(loadTraffic, 5000);
+loadTraffic();
+
+</script>
+
+</body>
+</html>

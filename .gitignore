@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environment
+venv/
+env/
+
+# Model weights
+*.pt
+*.pth
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+
+# Videos
+*.mp4
+*.avi
+*.mov
