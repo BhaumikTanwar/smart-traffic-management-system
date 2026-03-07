@@ -79,6 +79,10 @@
             Congestion Level
             <div class="value" id="congestion">--</div>
         </div>
+        <div class="card">
+            Future Congestion
+            <div class="value" id="futureCongestion">--</div>
+        </div>
 
         <div class="card">
             Adaptive Green Time
@@ -192,6 +196,8 @@ function loadTraffic(){
             road.adaptive_green_time + " sec";
         document.getElementById("congestion").innerText =
             road.congestion_level;
+        document.getElementById("futureCongestion").innerText =
+            road.future_congestion;
 
         // Update Graph
         timeLabels.push(data.timestamp);

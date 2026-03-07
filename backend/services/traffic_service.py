@@ -2,169 +2,135 @@ import random
 import time
 import os
 import joblib
+import pandas as pd
 from services.video_service import detect_vehicles_from_video
 
-traffic_history = []
-
-previous_counts = {}
+# -----------------------------
+# Paths
+# -----------------------------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
+
 VIDEO_PATH = os.path.join(PROJECT_ROOT, "uploaded_video.mp4")
-MODEL_PATH = os.path.join(PROJECT_ROOT, "traffic_prediction_model.pkl")
+MODEL_PATH = os.path.join(PROJECT_ROOT, "traffic_congestion_model.pkl")
+DATASET_PATH = os.path.join(PROJECT_ROOT, "dataset.csv")
+
+dataset = pd.read_csv(DATASET_PATH)
+
+# -----------------------------
+# Load ML model
+# -----------------------------
 
 model = joblib.load(MODEL_PATH)
 
-def predict_traffic(vehicle_count):
+# labels used during training
+CONGESTION_LABELS = ["Low", "Medium", "High"]
 
-    # temporary default values for other features
+# store previous traffic values
+traffic_history = []
+
+# -----------------------------
+# Predict congestion using ML
+# -----------------------------
+
+def predict_congestion(vehicle_count):
+
     avg_speed = 40
     lane_occupancy = 50
     weather = 0
-    congestion = 1
 
-    data = [[vehicle_count, avg_speed, lane_occupancy, weather, congestion]]
+    data = [[vehicle_count, avg_speed, lane_occupancy, weather]]
 
-    prediction = model.predict(data)
+    prediction = model.predict(data)[0]
 
-    return int(prediction[0])
+    return CONGESTION_LABELS[int(prediction)]
 
-def calculate_green_time(vehicle_count):
 
-    CLEARANCE_TIME_PER_VEHICLE = 2   # seconds
-    MIN_GREEN = 20
-    MAX_GREEN = 90
+# -----------------------------
+# Predict future traffic
+# -----------------------------
 
-    green_time = vehicle_count * CLEARANCE_TIME_PER_VEHICLE
-
-    # keep within limits
-    green_time = max(MIN_GREEN, min(green_time, MAX_GREEN))
-
-    return green_time
-
-def predict_future_traffic():
-
-    global traffic_history
+def predict_future_vehicle_count():
 
     if len(traffic_history) < 3:
         return traffic_history[-1] if traffic_history else 0
 
-    last_values = traffic_history[-3:]
+    v1, v2, v3 = traffic_history[-3:]
 
-    prediction = sum(last_values) / len(last_values)
+    trend = (v3 - v1) / 2
 
-    return int(prediction)
+    future = v3 + trend
 
-def generate_road_data(name, current_mode):
-    global previous_counts
+    return max(0, int(future))
 
-    # VIDEO MODE WITHOUT UPLOAD → STOP
-    if current_mode == "video":
-        if not os.path.exists(VIDEO_PATH):
-            return None
-        vehicle_count = detect_vehicles_from_video()
+
+# -----------------------------
+# Signal timing logic
+# -----------------------------
+
+def calculate_green_time(congestion):
+
+    if congestion == "Low":
+        return 30
+    elif congestion == "Medium":
+        return 45
     else:
-        vehicle_count = random.randint(10, 120)
+        return 60
 
-    # Congestion Logic
-    if vehicle_count < 30:
-        congestion = "Low"
-        base_green = 30
-    elif vehicle_count < 70:
-        congestion = "Medium"
-        base_green = 45
-    else:
-        congestion = "High"
-        base_green = 60
 
-    previous = previous_counts.get(name, vehicle_count)
-
-    if vehicle_count > previous:
-        predicted_trend = "Increasing"
-    elif vehicle_count < previous:
-        predicted_trend = "Decreasing"
-    else:
-        predicted_trend = "Stable"
-
-    if predicted_trend == "Increasing" and congestion == "Medium":
-        predicted_congestion = "High"
-    elif predicted_trend == "Decreasing" and congestion == "Medium":
-        predicted_congestion = "Low"
-    else:
-        predicted_congestion = congestion
-
-    previous_counts[name] = vehicle_count
-
-    return {
-        "road_name": name,
-        "vehicle_count": vehicle_count,
-        "congestion_level": congestion,
-        "predicted_congestion": predicted_congestion,
-        "trend": predicted_trend,
-        "base_green_time": base_green
-    }
-
+# -----------------------------
+# Main traffic logic
+# -----------------------------
 
 def get_traffic_status(current_mode):
 
-    import os
-
-    VIDEO_PATH = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
-        "uploaded_video.mp4"
-    )
-
-    # 🔴 If video mode but no uploaded file → STOP
+    # video mode but no video uploaded
     if current_mode == "video" and not os.path.exists(VIDEO_PATH):
         return {
             "video_ready": False,
             "current_mode": current_mode
         }
 
-    # Otherwise continue normally
+    # detect vehicles
     if current_mode == "video":
         vehicle_count = detect_vehicles_from_video()
     else:
-        vehicle_count = random.randint(10, 120)
+        row = dataset.sample(1).iloc[0]
 
-    predicted_traffic = predict_traffic(vehicle_count)
+    vehicle_count = int(row["vehicle_count"])
 
-    green_time = predicted_traffic * 2
-    green_time = max(20, min(green_time, 90))
+    congestion = row["congestion_level"]
 
-# store history
+    # store history
     traffic_history.append(vehicle_count)
 
-# keep last 10 values
     if len(traffic_history) > 10:
         traffic_history.pop(0)
 
-# predict future traffic
-    predicted_traffic = predict_future_traffic()
-
-# calculate green time
-    adaptive_green = calculate_green_time(predicted_traffic)
-
-    # Congestion logic
-    if vehicle_count < 30:
-        congestion = "Low"
-        base_green = 30
-    elif vehicle_count < 70:
-        congestion = "Medium"
-        base_green = 45
+    # current congestion prediction
+    if current_mode == "simulation":
+        congestion = row["congestion_level"]
     else:
-        congestion = "High"
-        base_green = 60
+        congestion = predict_congestion(vehicle_count)
 
-    adaptive_green = base_green + 15
+    # future traffic prediction
+    future_vehicle_count = predict_future_vehicle_count()
+
+    # future congestion prediction
+    future_congestion = predict_congestion(future_vehicle_count)
+
+    # signal timing
+    green_time = calculate_green_time(congestion)
 
     return {
-    "timestamp": time.strftime("%H:%M:%S"),
-    "current_mode": current_mode,
-    "video_ready": True,
-    "roads": [{
-        "vehicle_count": vehicle_count,
-        "predicted_traffic": predicted_traffic,
-        "adaptive_green_time": green_time
-    }]
-}
+        "timestamp": time.strftime("%H:%M:%S"),
+        "current_mode": current_mode,
+        "video_ready": True,
+        "roads": [{
+            "vehicle_count": vehicle_count,
+            "congestion_level": congestion,
+            "future_congestion": future_congestion,
+            "adaptive_green_time": green_time
+        }]
+    }
