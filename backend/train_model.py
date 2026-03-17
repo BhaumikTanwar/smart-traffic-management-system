@@ -1,98 +1,58 @@
-import os
 import pandas as pd
-import joblib
-
+import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
-from sklearn.preprocessing import LabelEncoder
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATASET_PATH = os.path.join(BASE_DIR, "dataset.csv")
-
-df = pd.read_csv(DATASET_PATH)
+import joblib
 
 # -----------------------------
-# Feature Engineering
+# Load dataset
 # -----------------------------
 
-# convert timestamp → hour
-df["timestamp"] = pd.to_datetime(df["timestamp"])
-df["hour"] = df["timestamp"].dt.hour
-
-# encode weather
-weather_encoder = LabelEncoder()
-df["weather"] = weather_encoder.fit_transform(df["weather"])
-
-# encode congestion level
-congestion_encoder = LabelEncoder()
-df["congestion_level"] = congestion_encoder.fit_transform(df["congestion_level"])
+data = pd.read_csv("dataset.csv")
 
 # -----------------------------
-# Features
+# Create additional features
 # -----------------------------
 
-X = df[
-[
-    "vehicle_count",
-    "avg_speed_kmph",
-    "lane_occupancy_percent",
-    "hour"
-]
-]
+def generate_features(row):
+    vc = row["vehicle_count"]
 
-y = df["congestion_level"]
+    if vc < 10:
+        avg_speed = 50
+        lane_occupancy = 30
+    elif vc < 25:
+        avg_speed = 35
+        lane_occupancy = 60
+    else:
+        avg_speed = 20
+        lane_occupancy = 90
 
-# -----------------------------
-# Train Test Split
-# -----------------------------
+    weather = 0
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
-    test_size=0.2,
-    random_state=42,
-    stratify=y
-)
+    return pd.Series([avg_speed, lane_occupancy, weather])
 
-
+data[["avg_speed", "lane_occupancy", "weather"]] = data.apply(generate_features, axis=1)
 
 # -----------------------------
-# Train Model
+# Features & Labels
 # -----------------------------
 
-model = RandomForestClassifier(
-    n_estimators=300,
-    max_depth=15,
-    class_weight="balanced",
-    random_state=42
-)
+X = data[["vehicle_count", "avg_speed", "lane_occupancy", "weather"]]
+y = data["congestion_level"]
 
+# -----------------------------
+# Train model
+# -----------------------------
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+model = RandomForestClassifier(n_estimators=100)
 model.fit(X_train, y_train)
 
 # -----------------------------
-# Evaluate
+# Save model
 # -----------------------------
 
-preds = model.predict(X_test)
+joblib.dump(model, "traffic_congestion_model.pkl")
 
-accuracy = accuracy_score(y_test, preds)
-
-print("Model Accuracy:", accuracy)
-
-# -----------------------------
-# Save Model
-# -----------------------------
-
-MODEL_PATH = os.path.join(BASE_DIR, "traffic_congestion_model.pkl")
-
-joblib.dump(
-    {
-        "model": model,
-        "weather_encoder": weather_encoder,
-        "congestion_encoder": congestion_encoder
-    },
-    MODEL_PATH
-)
-print(df.groupby("congestion_level")["vehicle_count"].describe())
-print("Model saved successfully!")
+print("✅ Model trained and saved successfully!")

@@ -140,12 +140,17 @@ def set_mode(mode):
 
     CURRENT_MODE = mode
 
+    # 👉 If switching to simulation → delete uploaded video
     if mode == "simulation":
 
-        video_path = os.path.join(BASE_DIR, "uploaded_video.mp4")
+        video_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploaded_video.mp4")
 
         if os.path.exists(video_path):
-            os.remove(video_path)
+            try:
+                os.remove(video_path)
+                print("✅ Uploaded video deleted")
+            except Exception as e:
+                print("❌ Error deleting video:", e)
 
     return jsonify({"current_mode": CURRENT_MODE})
 

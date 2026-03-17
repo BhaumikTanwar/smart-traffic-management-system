@@ -102,7 +102,7 @@
     <button onclick="uploadVideo()">Upload</button>
 
     <div id="videoFeedContainer">
-        <img src="{{ url_for('video_feed') }}" width="100%" />
+        <img id="videoStream" width="100%" style="display:none;" />
     </div>
 </div>
 
@@ -168,9 +168,18 @@ function uploadVideo(){
     })
     .then(res=>res.json())
     .then(data=>{
-        alert("Video Uploaded!");
-        document.getElementById("videoFeedContainer").style.display="block";
-    });
+    alert("Video Uploaded!");
+
+    const container = document.getElementById("videoFeedContainer");
+    container.style.display = "block";
+
+    const img = document.getElementById("videoStream");
+
+    img.style.display = "block";
+
+    // 🔥 FORCE HARD RELOAD
+    img.src = "/video_feed?rand=" + Math.random();
+});
 }
 
 function loadTraffic(){
@@ -178,10 +187,12 @@ function loadTraffic(){
     .then(res=>res.json())
     .then(data=>{
 
+        console.log("API DATA:", data); // 🔍 DEBUG
+
         document.getElementById("currentModeBadge").innerText =
             "Mode: " + data.current_mode.toUpperCase();
 
-        // 🚫 VIDEO MODE but no upload yet
+        // VIDEO MODE check
         if(data.current_mode === "video" && data.video_ready === false){
             document.getElementById("vehicleCount").innerText = "--";
             document.getElementById("congestion").innerText = "Waiting for video...";
@@ -189,17 +200,23 @@ function loadTraffic(){
             return;
         }
 
+        // 🚨 FIX: check if roads exists
+        if(!data.roads || data.roads.length === 0){
+            console.log("No roads data");
+            return;
+        }
+
         const road = data.roads[0];
 
-        document.getElementById("vehicleCount").innerText = road.vehicle_count;
+        document.getElementById("vehicleCount").innerText = road.vehicle_count ?? "--";
         document.getElementById("greenTime").innerText =
-            road.adaptive_green_time + " sec";
+            (road.adaptive_green_time ?? "--") + " sec";
         document.getElementById("congestion").innerText =
-            road.congestion_level;
+            road.congestion_level ?? "--";
         document.getElementById("futureCongestion").innerText =
-            road.future_congestion;
+            road.future_congestion ?? "--";
 
-        // Update Graph
+        // Graph
         timeLabels.push(data.timestamp);
         vehicleData.push(road.vehicle_count);
 
@@ -209,6 +226,9 @@ function loadTraffic(){
         }
 
         trafficChart.update();
+    })
+    .catch(err => {
+        console.error("Fetch error:", err);
     });
 }
 
