@@ -45,7 +45,7 @@ def detect_vehicles_from_video(video_path):
                 cls = int(box.cls[0])
 
                 # vehicle classes
-                if cls in [2, 3, 5, 7]:
+                if cls in [1, 2, 3, 5, 7]:
                     count += 1
 
         print(f"Frame {idx} → Count: {count}")
@@ -68,30 +68,33 @@ def detect_vehicles_from_video(video_path):
 # ------------------------------
 def generate_video_stream():
 
+    import time
+
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     video_path = os.path.join(BASE_DIR, "backend", "uploaded_video.mp4")
 
     print("📺 Streaming video from:", video_path)
-
+    print("VIDEO PATH:", video_path)
+    print("FILE EXISTS:", os.path.exists(video_path))
     while True:
 
         if not os.path.exists(video_path):
-            # wait until video is uploaded
+            time.sleep(1)  # ✅ prevent CPU spin
             continue
 
         cap = cv2.VideoCapture(video_path)
 
         if not cap.isOpened():
             print("❌ Cannot open video for streaming")
+            time.sleep(1)  # ✅ prevent CPU spin
             continue
 
         while True:
             success, frame = cap.read()
 
             if not success:
-                # restart video loop
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                continue
+                cap.release()  # ✅ release properly
+                break          # ✅ break to outer loop → reopens video
 
             results = model(frame)
 
@@ -100,7 +103,7 @@ def generate_video_stream():
                     class_id = int(box.cls[0])
                     label = model.names[class_id]
 
-                    if label in ["car", "truck", "bus", "motorbike"]:
+                    if label in ["car", "truck", "bus", "motorcycle"]:  # ✅ fixed label
                         x1, y1, x2, y2 = map(int, box.xyxy[0])
 
                         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)

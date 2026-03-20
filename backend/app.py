@@ -159,12 +159,9 @@ def set_mode(mode):
 # Traffic API
 # -----------------------------
 
-@app.route("/api/traffic-status")
+@app.route('/api/traffic-status')
 def traffic_status():
-
-    data = get_traffic_status(CURRENT_MODE)
-
-    return jsonify(data)
+    return get_traffic_status(CURRENT_MODE)
 
 
 # -----------------------------

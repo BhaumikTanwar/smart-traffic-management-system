@@ -139,7 +139,7 @@ def get_traffic_status(current_mode):
         "current_mode": current_mode,
         "video_ready": True,
         "roads": [{
-            "vehicle_count": vehicle_count,
+            "vehicle_count": 999,
             "congestion_level": congestion,
             "future_vehicle_count": future_vehicle_count,
             "future_congestion": future_congestion,
