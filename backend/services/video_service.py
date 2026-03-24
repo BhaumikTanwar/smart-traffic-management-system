@@ -1,125 +1,75 @@
 import cv2
-import os
-import numpy as np
 from ultralytics import YOLO
+import services.traffic_service as ts  # STOP flag
 
-# ✅ Load model ONCE
+# -----------------------------
+# Load YOLO model once
+# -----------------------------
 model = YOLO("yolov8n.pt")
 
-# ------------------------------
-# 1️⃣ Vehicle Detection (for congestion logic)
-# ------------------------------
+# COCO vehicle classes
+VEHICLE_CLASSES = [2, 3, 5, 7]  # car, bike, bus, truck
+
+# -----------------------------
+# GLOBAL VIDEO CAPTURE
+# -----------------------------
+cap = None
+
+# -----------------------------
+# MAIN FUNCTION
+# -----------------------------
 def detect_vehicles_from_video(video_path):
 
-    print("📹 Using video for detection:", video_path)
+    global cap
 
-    cap = cv2.VideoCapture(video_path)
-
-    if not cap.isOpened():
-        print("❌ Video not opened:", video_path)
+    # 🔥 Stop if mode changed
+    if ts.STOP_VIDEO:
+        print("🛑 Video stopped")
+        if cap is not None:
+            cap.release()
+            cap = None
         return 0
 
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-    if total_frames == 0:
-        print("❌ Empty video")
-        return 0
-
-    # 👉 sample 5 frames
-    frame_indices = np.linspace(0, total_frames - 1, 5, dtype=int)
-
-    vehicle_counts = []
-
-    for idx in frame_indices:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-        ret, frame = cap.read()
-
-        if not ret or frame is None:
-            continue
-
-        results = model(frame)
-
-        count = 0
-        for r in results:
-            for box in r.boxes:
-                cls = int(box.cls[0])
-
-                # vehicle classes
-                if cls in [1, 2, 3, 5, 7]:
-                    count += 1
-
-        print(f"Frame {idx} → Count: {count}")
-        vehicle_counts.append(count)
-
-    cap.release()
-
-    if len(vehicle_counts) == 0:
-        return 0
-
-    avg_count = int(sum(vehicle_counts) / len(vehicle_counts))
-
-    print("🚗 Final vehicle count:", avg_count)
-
-    return avg_count
-
-
-# ------------------------------
-# 2️⃣ Live Video Stream (for dashboard)
-# ------------------------------
-def generate_video_stream():
-
-    import time
-
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    video_path = os.path.join(BASE_DIR, "backend", "uploaded_video.mp4")
-
-    print("📺 Streaming video from:", video_path)
-    print("VIDEO PATH:", video_path)
-    print("FILE EXISTS:", os.path.exists(video_path))
-    while True:
-
-        if not os.path.exists(video_path):
-            time.sleep(1)  # ✅ prevent CPU spin
-            continue
-
+    # 🔥 Open video once
+    if cap is None:
         cap = cv2.VideoCapture(video_path)
 
-        if not cap.isOpened():
-            print("❌ Cannot open video for streaming")
-            time.sleep(1)  # ✅ prevent CPU spin
-            continue
+    count_list = []
 
-        while True:
-            success, frame = cap.read()
+    # -----------------------------
+    # Read multiple frames
+    # -----------------------------
+    for _ in range(5):  # process 5 frames
 
-            if not success:
-                cap.release()  # ✅ release properly
-                break          # ✅ break to outer loop → reopens video
+        ret, frame = cap.read()
 
-            results = model(frame)
+        if not ret:
+            if cap is not None:
+                cap.release()
+                cap = None
+            break
 
-            for r in results:
-                for box in r.boxes:
-                    class_id = int(box.cls[0])
-                    label = model.names[class_id]
+        results = model(frame)[0]
 
-                    if label in ["car", "truck", "bus", "motorcycle"]:  # ✅ fixed label
-                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+        count = 0
 
-                        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        for box in results.boxes:
+            cls = int(box.cls[0])
 
-                        cv2.putText(
-                            frame,
-                            label,
-                            (x1, y1 - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.5,
-                            (0, 255, 0),
-                            2
-                        )
+            if cls in VEHICLE_CLASSES:
+                count += 1
 
-            ret, buffer = cv2.imencode('.jpg', frame)
-            frame = buffer.tobytes()
+        count_list.append(count)
 
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+    # -----------------------------
+    # Average count
+    # -----------------------------
+    if len(count_list) == 0:
+        return 0
+
+    avg_count = sum(count_list) // len(count_list)
+
+    # 🔥 Slight scaling (optional realism)
+    avg_count = int(avg_count * 1.3)
+
+    return avg_count

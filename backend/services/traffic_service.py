@@ -1,147 +1,105 @@
-import random
 import time
 import os
-import joblib
-import pandas as pd
-import numpy as np
+import random
 from services.video_service import detect_vehicles_from_video
+from services.model_service import predict_traffic
 
 # -----------------------------
-# Paths
+# PATH
 # -----------------------------
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(BASE_DIR))
 
 VIDEO_PATH = os.path.join(PROJECT_ROOT, "backend", "uploaded_video.mp4")
-MODEL_PATH = os.path.join(PROJECT_ROOT, "traffic_congestion_model.pkl")
-DATASET_PATH = os.path.join(PROJECT_ROOT, "dataset.csv")
-
-dataset = pd.read_csv(DATASET_PATH)
 
 # -----------------------------
-# Load ML model (LOAD ONCE ✅)
+# GLOBAL FLAG (IMPORTANT)
 # -----------------------------
+STOP_VIDEO = False
 
-model = joblib.load(MODEL_PATH)
-
-CONGESTION_LABELS = ["Low", "Medium", "High"]
-
-# store previous traffic values
+# -----------------------------
+# HISTORY
+# -----------------------------
 traffic_history = []
 
 # -----------------------------
-# Predict congestion using ML
+# FUTURE
 # -----------------------------
+def predict_future(vehicle_history):
+    if len(vehicle_history) < 3:
+        return vehicle_history[-1] if vehicle_history else 0
 
-def predict_congestion(vehicle_count):
-
-    # derive features from vehicle count
-    if vehicle_count < 10:
-        avg_speed = 50
-        lane_occupancy = 30
-    elif vehicle_count < 25:
-        avg_speed = 35
-        lane_occupancy = 60
-    else:
-        avg_speed = 20
-        lane_occupancy = 90
-
-    weather = 0
-
-    features = np.array([[vehicle_count, avg_speed, lane_occupancy, weather]])
-
-    prediction = model.predict(features)[0]
-
-    return prediction
-
+    trend = (vehicle_history[-1] - vehicle_history[0]) / len(vehicle_history)
+    return max(int(vehicle_history[-1] + trend), 0)
 
 # -----------------------------
-# Predict future traffic
+# MAIN FUNCTION
 # -----------------------------
+def get_traffic_status(mode):
 
-def predict_future_vehicle_count(history):
-    if len(history) < 3:
-        return history[-1] if history else 0
-
-    trend = (history[-1] - history[0]) / len(history)
-    future = int(history[-1] + trend)
-
-    return max(future, 0)
-
-
-# -----------------------------
-# Signal timing logic
-# -----------------------------
-
-def calculate_signal_time(vehicle_count):
-
-    if vehicle_count < 10:
-        return 25
-    elif vehicle_count < 25:
-        return 45
-    elif vehicle_count < 40:
-        return 70
-    else:
-        return 90
-
-
-# -----------------------------
-# Main traffic logic
-# -----------------------------
-
-def get_traffic_status(current_mode):
-
+    global STOP_VIDEO
     global traffic_history
 
-    # video mode but no video uploaded
-    if current_mode == "video" and not os.path.exists(VIDEO_PATH):
-        return {
-            "video_ready": False,
-            "current_mode": current_mode
-        }
-
-    # -----------------------------
-    # VEHICLE DETECTION
-    # -----------------------------
-    if current_mode == "video":
-        vehicle_count = detect_vehicles_from_video(VIDEO_PATH)
-        congestion = predict_congestion(vehicle_count)
+    # 🔥 STOP video if mode changed
+    if mode != "video":
+        STOP_VIDEO = True
+        if os.path.exists(VIDEO_PATH):
+            try:
+                os.remove(VIDEO_PATH)
+                print("🗑️ Video deleted")
+            except Exception as e:
+                print("Error deleting video:", e)
     else:
-        row = dataset.sample(1).iloc[0]
-        vehicle_count = int(row["vehicle_count"])
-        congestion = row["congestion_level"]
+        STOP_VIDEO = False
 
     # -----------------------------
-    # STORE HISTORY
+    # VIDEO MODE
+    # -----------------------------
+    if mode == "video":
+
+        if not os.path.exists(VIDEO_PATH):
+            return {
+                "timestamp": time.strftime("%H:%M:%S"),
+                "current_mode": mode,
+                "video_ready": False,
+                "roads": []
+            }
+
+        vehicle_count = detect_vehicles_from_video(VIDEO_PATH)
+
+    # -----------------------------
+    # SIMULATION MODE
+    # -----------------------------
+    else:
+        vehicle_count = random.randint(5, 50)
+
+    # -----------------------------
+    # ML PREDICTION
+    # -----------------------------
+    congestion, green_time = predict_traffic(vehicle_count)
+
+    # -----------------------------
+    # HISTORY
     # -----------------------------
     traffic_history.append(vehicle_count)
-
-    # keep last 5 values only (cleaner)
     traffic_history = traffic_history[-5:]
 
     # -----------------------------
-    # FUTURE PREDICTION (FIXED ✅)
+    # FUTURE
     # -----------------------------
-    future_vehicle_count = predict_future_vehicle_count(traffic_history)
-    future_congestion = predict_congestion(future_vehicle_count)
+    future_vehicle = predict_future(traffic_history)
+    future_congestion, _ = predict_traffic(future_vehicle)
 
     # -----------------------------
-    # SIGNAL TIMING
-    # -----------------------------
-    green_time = calculate_signal_time(vehicle_count)
-
-    # -----------------------------
-    # FINAL RESPONSE
+    # RESPONSE
     # -----------------------------
     return {
         "timestamp": time.strftime("%H:%M:%S"),
-        "current_mode": current_mode,
+        "current_mode": mode,
         "video_ready": True,
         "roads": [{
-            "vehicle_count": 999,
+            "vehicle_count": vehicle_count,
             "congestion_level": congestion,
-            "future_vehicle_count": future_vehicle_count,
             "future_congestion": future_congestion,
             "adaptive_green_time": green_time
         }]

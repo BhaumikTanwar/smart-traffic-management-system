@@ -4,7 +4,7 @@ from flask import Flask, render_template, request, redirect, url_for, session
 from flask import jsonify, Response
 
 from services.traffic_service import get_traffic_status
-from services.video_service import generate_video_stream
+from services.video_service import detect_vehicles_from_video
 
 # -----------------------------
 # App setup
@@ -53,23 +53,6 @@ def upload_video():
 
     return jsonify({"status": "success"})
 
-
-# -----------------------------
-# Video Stream
-# -----------------------------
-
-@app.route("/video_feed")
-def video_feed():
-
-    return Response(
-        generate_video_stream(),
-        mimetype="multipart/x-mixed-replace; boundary=frame"
-    )
-
-
-# -----------------------------
-# Pages
-# -----------------------------
 
 @app.route("/")
 def index():
