@@ -102,7 +102,7 @@
     <button onclick="uploadVideo()">Upload</button>
 
     <div id="videoFeedContainer">
-        <img id="videoStream" width="100%" style="display:none;" />
+        <video id="videoPlayer" width="100%" controls style="display:none;"></video>
     </div>
 </div>
 
@@ -131,6 +131,16 @@ const trafficChart = new Chart(ctx, {
 });
 
 function setMode(mode) {
+
+    // 🔥 STOP VIDEO BEFORE SWITCH
+    const video = document.getElementById("videoPlayer");
+
+    if(video){
+        video.pause();
+        video.src = "";
+        video.load();
+    }
+
     fetch(`/set-mode/${mode}`)
     .then(res => res.json())
     .then(data => {
@@ -140,9 +150,6 @@ function setMode(mode) {
 
         if(mode === "video"){
             document.getElementById("videoSection").style.display = "block";
-            document.getElementById("vehicleCount").innerText = "--";
-            document.getElementById("congestion").innerText = "Waiting for video...";
-            document.getElementById("greenTime").innerText = "--";
         } 
         else {
             document.getElementById("videoSection").style.display = "none";
@@ -168,18 +175,23 @@ function uploadVideo(){
     })
     .then(res=>res.json())
     .then(data=>{
-    alert("Video Uploaded!");
+        alert("Video Uploaded!");
 
-    const container = document.getElementById("videoFeedContainer");
-    container.style.display = "block";
+        // SHOW CONTAINER
+        const container = document.getElementById("videoFeedContainer");
+        container.style.display = "block";
 
-    const img = document.getElementById("videoStream");
+        // LOAD VIDEO
+        const video = document.getElementById("videoPlayer");
 
-    img.style.display = "block";
+        video.style.display = "block";
 
-    // 🔥 FORCE HARD RELOAD
-    img.src = "/video_feed?rand=" + Math.random();
-});
+        // 🔥 FORCE RELOAD VIDEO
+        video.src = "/get-video?rand=" + Math.random();
+
+        video.load();
+        video.play();   // 🔥 IMPORTANT
+    });
 }
 
 function loadTraffic(){

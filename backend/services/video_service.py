@@ -18,6 +18,14 @@ cap = None
 # -----------------------------
 # MAIN FUNCTION
 # -----------------------------
+def release_video():
+    global cap
+    if cap is not None:
+        cap.release()
+        cap = None
+        cv2.destroyAllWindows()
+        print("📹 Video released")
+        
 def detect_vehicles_from_video(video_path):
 
     global cap

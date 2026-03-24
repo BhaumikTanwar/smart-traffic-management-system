@@ -35,6 +35,17 @@ USERS = {
     "user": {"password": "user123", "role": "user"},
 }
 
+from flask import send_file
+import os
+
+@app.route("/get-video")
+def get_video():
+    video_path = os.path.join(os.path.dirname(__file__), "uploaded_video.mp4")
+
+    if not os.path.exists(video_path):
+        return "No video", 404
+
+    return send_file(video_path)
 # -----------------------------
 # Upload Video
 # -----------------------------
@@ -42,16 +53,18 @@ USERS = {
 @app.route("/upload-video", methods=["POST"])
 def upload_video():
 
-    file = request.files.get("video")
+    video = request.files["video"]
 
-    if not file:
-        return jsonify({"status": "error", "message": "No file uploaded"})
+    # 🔥 FORCE SAVE IN BACKEND FOLDER
+    video_path = os.path.join(os.path.dirname(__file__), "uploaded_video.mp4")
 
-    upload_path = os.path.join(BASE_DIR, "uploaded_video.mp4")
+    video.save(video_path)
 
-    file.save(upload_path)
+    print("✅ Video saved at:", video_path)
 
-    return jsonify({"status": "success"})
+    return {"status": "uploaded"}
+
+
 
 
 @app.route("/")

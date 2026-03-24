@@ -3,6 +3,7 @@ import os
 import random
 from services.video_service import detect_vehicles_from_video
 from services.model_service import predict_traffic
+from services.video_service import release_video
 
 # -----------------------------
 # PATH
@@ -43,12 +44,13 @@ def get_traffic_status(mode):
     # 🔥 STOP video if mode changed
     if mode != "video":
         STOP_VIDEO = True
+        release_video()
         if os.path.exists(VIDEO_PATH):
             try:
                 os.remove(VIDEO_PATH)
                 print("🗑️ Video deleted")
             except Exception as e:
-                print("Error deleting video:", e)
+                print("❌ Error deleting video:", e)
     else:
         STOP_VIDEO = False
 
