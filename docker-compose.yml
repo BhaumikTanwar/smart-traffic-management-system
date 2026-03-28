@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  traffic:
+    build: .
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    volumes:
+      # Persist SQLite DB and uploaded videos between restarts
+      - ./data:/app/backend/services
+    restart: unless-stopped

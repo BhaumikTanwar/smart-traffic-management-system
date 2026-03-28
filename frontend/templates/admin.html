@@ -38,13 +38,25 @@
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html, body { height: 100%; font-family: var(--font); background: var(--bg); color: var(--text); overflow: hidden; }
 
+        /* ── ALERT BANNER ── */
+        #alert-banner {
+            display: none; position: fixed; top: var(--topbar-h); left: 0; right: 0;
+            z-index: 300; padding: 10px 24px; font-size: 13px; font-weight: 500;
+            gap: 10px; align-items: center; border-bottom: 1px solid transparent;
+            transition: background .3s, color .3s;
+        }
+        #alert-banner.visible { display: flex; }
+        #alert-banner.red    { background: var(--red-bg);   color: var(--red);   border-color: #fecaca; --topbar-h: 84px; }
+        #alert-banner.amber  { background: var(--amber-bg); color: var(--amber); border-color: #fde68a; }
+        #alert-banner.green  { background: var(--green-bg); color: var(--green); border-color: #bbf7d0; }
+        .banner-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulse-dot 1.4s ease-in-out infinite; }
+        @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+
         /* ── TOPBAR ── */
         #topbar {
-            height: var(--topbar-h);
-            background: var(--surface);
+            height: var(--topbar-h); background: var(--surface);
             border-bottom: 1px solid var(--border);
-            display: flex; align-items: center;
-            padding: 0 24px; gap: 14px;
+            display: flex; align-items: center; padding: 0 24px; gap: 14px;
             position: fixed; top:0; left:0; right:0; z-index:200;
         }
         .brand { display:flex; align-items:center; gap:9px; }
@@ -52,70 +64,31 @@
         .brand-name { font-family:var(--serif);font-size:16px;color:var(--text); }
         .brand-sub  { font-size:11px;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;font-weight:500; }
         .divider-v  { width:1px;height:20px;background:var(--border); }
-
-        #currentModeBadge {
-            display:inline-flex;align-items:center;gap:5px;
-            background:var(--blue-bg);border:1px solid #bfdbfe;
-            border-radius:20px;padding:3px 11px;
-            font-size:11px;font-weight:600;color:var(--blue);
-            letter-spacing:.06em;text-transform:uppercase;
-            transition:background .3s,color .3s,border-color .3s;
-        }
+        #currentModeBadge { display:inline-flex;align-items:center;gap:5px;background:var(--blue-bg);border:1px solid #bfdbfe;border-radius:20px;padding:3px 11px;font-size:11px;font-weight:600;color:var(--blue);letter-spacing:.06em;text-transform:uppercase;transition:background .3s,color .3s,border-color .3s; }
         #currentModeBadge.active { background:var(--green-bg);border-color:#bbf7d0;color:var(--green); }
-
         .live-dot { width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse-dot 1.8s ease-in-out infinite; }
-        @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)} }
-
-        /* WebSocket status */
-        #ws-status {
-            display:inline-flex;align-items:center;gap:5px;
-            font-size:11px;color:var(--text3);font-family:var(--mono);
-        }
+        #ws-status { display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);font-family:var(--mono); }
         #ws-dot { width:6px;height:6px;border-radius:50%;background:var(--text3);transition:background .3s; }
         #ws-dot.connected { background:var(--green); }
-
         .topbar-right { margin-left:auto;display:flex;align-items:center;gap:12px; }
         #last-updated { font-family:var(--mono);font-size:11px;color:var(--text3); }
 
         /* ── PAGE ── */
-        #page {
-            position:fixed;top:var(--topbar-h);left:0;right:0;bottom:0;
-            display:flex;overflow:hidden;
-        }
+        #page { position:fixed;top:var(--topbar-h);left:0;right:0;bottom:0;display:flex;overflow:hidden; }
 
-        /* ── LEFT ── */
-        #left-col {
-            flex:1;display:flex;flex-direction:column;
-            gap:14px;padding:18px;overflow-y:auto;min-width:0;
-        }
+        #left-col { flex:1;display:flex;flex-direction:column;gap:14px;padding:18px;overflow-y:auto;min-width:0; }
         #left-col::-webkit-scrollbar{width:4px}
         #left-col::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px}
 
-        /* ── RIGHT (video panel) ── */
-        #right-col {
-            width:0;overflow:hidden;
-            transition:width .4s cubic-bezier(.16,1,.3,1);
-            display:flex;flex-direction:column;
-            border-left:0px solid var(--border);
-        }
+        #right-col { width:0;overflow:hidden;transition:width .4s cubic-bezier(.16,1,.3,1);display:flex;flex-direction:column;border-left:0px solid var(--border); }
         #right-col.open { width:380px;border-left-width:1px; }
-
         #video-panel { flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--surface); }
-
-        .panel-header {
-            height:46px;display:flex;align-items:center;
-            padding:0 18px;border-bottom:1px solid var(--border);gap:8px;flex-shrink:0;
-        }
+        .panel-header { height:46px;display:flex;align-items:center;padding:0 18px;border-bottom:1px solid var(--border);gap:8px;flex-shrink:0; }
         .panel-title { font-family:var(--serif);font-size:14px;color:var(--text); }
         .panel-sub   { font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-left:auto; }
         .panel-body  { flex:1;display:flex;flex-direction:column;padding:14px;gap:10px;overflow:hidden; }
 
-        /* upload */
-        .upload-zone {
-            border:1.5px dashed var(--border2);border-radius:10px;
-            padding:18px;text-align:center;background:var(--surface2);
-            transition:border-color .2s,background .2s;flex-shrink:0;
-        }
+        .upload-zone { border:1.5px dashed var(--border2);border-radius:10px;padding:18px;text-align:center;background:var(--surface2);transition:border-color .2s,background .2s;flex-shrink:0; }
         .upload-zone:hover{border-color:var(--text3);background:var(--bg)}
         .upload-zone input[type="file"]{display:none}
         .upload-zone label{cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px}
@@ -123,12 +96,7 @@
         .upload-text{font-size:12.5px;color:var(--text2);font-weight:500}
         .upload-hint{font-size:11px;color:var(--text3)}
         #selectedFileName{font-family:var(--mono);font-size:11px;color:var(--text2);min-height:14px}
-
-        #videoFeedContainer {
-            flex:1;border-radius:10px;overflow:hidden;
-            border:1px solid var(--border);background:var(--surface2);
-            display:none;align-items:center;justify-content:center;min-height:0;
-        }
+        #videoFeedContainer { flex:1;border-radius:10px;overflow:hidden;border:1px solid var(--border);background:var(--surface2);display:none;align-items:center;justify-content:center;min-height:0; }
         #videoFeedContainer.visible{display:flex}
         #videoStream{width:100%;height:100%;object-fit:cover;display:none}
         #videoStream.visible{display:block}
@@ -136,17 +104,9 @@
         #no-feed .nf-icon{font-size:26px;opacity:.3;margin-bottom:6px}
 
         /* ── CARD ── */
-        .card {
-            background:var(--surface);border:1px solid var(--border);
-            border-radius:var(--radius);overflow:hidden;
-            animation:fadeUp .35s cubic-bezier(.16,1,.3,1) both;flex-shrink:0;
-        }
-        .card:nth-child(1){animation-delay:.05s}
-        .card:nth-child(2){animation-delay:.1s}
-        .card:nth-child(3){animation-delay:.15s}
-        .card:nth-child(4){animation-delay:.2s}
+        .card { background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;animation:fadeUp .35s cubic-bezier(.16,1,.3,1) both;flex-shrink:0; }
+        .card:nth-child(1){animation-delay:.05s}.card:nth-child(2){animation-delay:.1s}.card:nth-child(3){animation-delay:.15s}.card:nth-child(4){animation-delay:.2s}
         @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-
         .card-header{padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
         .card-title{font-family:var(--serif);font-size:15px;font-weight:500;color:var(--text)}
         .card-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-left:auto}
@@ -154,13 +114,7 @@
 
         /* ── BUTTONS ── */
         .btn-group{display:flex;gap:8px;flex-wrap:wrap}
-        button{
-            font-family:var(--font);padding:8px 15px;border-radius:8px;
-            border:1px solid var(--border);background:var(--surface2);
-            color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;
-            display:inline-flex;align-items:center;gap:6px;
-            transition:background .15s,border-color .15s,color .15s,box-shadow .15s;
-        }
+        button { font-family:var(--font);padding:8px 15px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .15s,border-color .15s,color .15s,box-shadow .15s; }
         button:hover{background:var(--surface);border-color:var(--border2);color:var(--text);box-shadow:var(--shadow)}
         button.primary{background:var(--text);border-color:var(--text);color:#fff}
         button.primary:hover{background:#2d2926;border-color:#2d2926;box-shadow:var(--shadow-md)}
@@ -179,17 +133,29 @@
         .metric-badge.amber{background:var(--amber-bg);color:var(--amber);border:1px solid #fde68a}
         .metric-badge.red  {background:var(--red-bg);  color:var(--red);  border:1px solid #fecaca}
 
+        /* ── CONFIDENCE BAR (NEW) ── */
+        .conf-row { margin-top: 8px; }
+        .conf-label { font-size: 10px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+        .conf-track { height: 4px; background: var(--border); border-radius: 99px; overflow: hidden; }
+        .conf-fill  { height: 100%; border-radius: 99px; transition: width .6s cubic-bezier(.16,1,.3,1), background .4s; }
+        .conf-fill.green { background: var(--green); }
+        .conf-fill.amber { background: var(--amber); }
+        .conf-fill.red   { background: var(--red);   }
+        .conf-pct  { font-family: var(--mono); font-size: 11px; color: var(--text2); margin-top: 3px; }
+
         /* ── CHARTS ROW ── */
         #charts-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
         .chart-wrap{padding:14px 18px;height:190px;position:relative}
 
-        /* scrollbar */
         ::-webkit-scrollbar{width:4px}
         ::-webkit-scrollbar-track{background:transparent}
         ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px}
     </style>
 </head>
 <body>
+
+<!-- ALERT BANNER -->
+<div id="alert-banner"><div class="banner-dot"></div><span id="banner-msg">—</span></div>
 
 <!-- TOPBAR -->
 <div id="topbar">
@@ -225,6 +191,7 @@
                     <button id="btn-sim" onclick="setMode('simulation')"><span>⊙</span> Simulation</button>
                     <button id="btn-vid" onclick="setMode('video')"><span>▶</span> Video</button>
                     <button class="primary" onclick="window.location.href='/spiderweb'"><span>🕸</span> Spiderweb</button>
+                    <button onclick="exportData()" style="margin-left:auto"><span>↓</span> Export CSV</button>
                 </div>
             </div>
         </div>
@@ -245,11 +212,21 @@
                     <div class="metric-lbl">Congestion Level</div>
                     <div class="metric-val" id="congestion">--</div>
                     <div id="congestion-badge"></div>
+                    <!-- Confidence bar -->
+                    <div class="conf-row">
+                        <div class="conf-label">Model confidence</div>
+                        <div class="conf-track"><div class="conf-fill" id="conf-fill" style="width:0%"></div></div>
+                        <div class="conf-pct" id="conf-pct">—</div>
+                    </div>
                 </div>
                 <div class="metric-tile">
                     <div class="metric-lbl">Future Congestion</div>
                     <div class="metric-val" id="futureCongestion">--</div>
-                    <div class="metric-sub">predicted</div>
+                    <div class="metric-sub">predicted next cycle</div>
+                    <div class="conf-row">
+                        <div class="conf-track"><div class="conf-fill" id="fut-conf-fill" style="width:0%"></div></div>
+                        <div class="conf-pct" id="fut-conf-pct">—</div>
+                    </div>
                 </div>
                 <div class="metric-tile">
                     <div class="metric-lbl">Adaptive Green Time</div>
@@ -320,98 +297,74 @@ const chartDefaults = {
     responsive:true, maintainAspectRatio:false,
     plugins:{
         legend:{display:false},
-        tooltip:{
-            backgroundColor:'#fff',borderColor:'#e8e4de',borderWidth:1,
-            titleColor:'#1a1814',bodyColor:'#6b6560',padding:10,cornerRadius:8,
-            titleFont:{family:"'DM Mono',monospace",size:11},
-            bodyFont:{family:"'DM Sans',sans-serif",size:12}
-        }
+        tooltip:{backgroundColor:'#fff',borderColor:'#e8e4de',borderWidth:1,titleColor:'#1a1814',bodyColor:'#6b6560',padding:10,cornerRadius:8,titleFont:{family:"'DM Mono',monospace",size:11},bodyFont:{family:"'DM Sans',sans-serif",size:12}}
     },
     scales:{
-        y:{beginAtZero:true,grid:{color:'#e8e4de',drawTicks:false},border:{display:false},
-           ticks:{color:'#a39f99',font:{family:"'DM Mono',monospace",size:10},padding:8}},
-        x:{grid:{display:false},border:{display:false},
-           ticks:{color:'#a39f99',font:{family:"'DM Mono',monospace",size:10},padding:8,maxRotation:0}}
+        y:{beginAtZero:true,grid:{color:'#e8e4de',drawTicks:false},border:{display:false},ticks:{color:'#a39f99',font:{family:"'DM Mono',monospace",size:10},padding:8}},
+        x:{grid:{display:false},border:{display:false},ticks:{color:'#a39f99',font:{family:"'DM Mono',monospace",size:10},padding:8,maxRotation:0}}
     }
 };
 
-// Live chart
-const liveLabels=[], liveData=[];
+// Live chart — dataset colour updates with congestion
+const liveLabels=[], liveData=[], liveColors=[];
 const liveChart = new Chart(
     document.getElementById('liveChart').getContext('2d'),
     { type:'line', data:{
         labels:liveLabels,
         datasets:[{
-            data:liveData,borderColor:'#1a1814',
+            data:liveData,
+            borderColor:'#1a1814',
             backgroundColor:'rgba(26,24,20,0.05)',
             borderWidth:1.5,tension:0.4,pointRadius:3,
-            pointBackgroundColor:'#1a1814',fill:true
+            pointBackgroundColor:liveColors,fill:true
         }]
     }, options:chartDefaults }
 );
 
-// History chart (hourly averages from DB)
+// History chart
 const historyChart = new Chart(
     document.getElementById('historyChart').getContext('2d'),
-    { type:'bar', data:{
-        labels:[],
-        datasets:[{
-            data:[],
-            backgroundColor:'rgba(26,24,20,0.08)',
-            borderColor:'#1a1814',borderWidth:1.5,borderRadius:4
-        }]
-    }, options:{...chartDefaults,
-        scales:{...chartDefaults.scales,
-            x:{...chartDefaults.scales.x,
-               ticks:{...chartDefaults.scales.x.ticks,
-                      callback:v=>v+':00'}}
-        }}
-    }
+    { type:'bar', data:{labels:[],datasets:[{data:[],backgroundColor:'rgba(26,24,20,0.08)',borderColor:'#1a1814',borderWidth:1.5,borderRadius:4}]},
+      options:{...chartDefaults,scales:{...chartDefaults.scales,x:{...chartDefaults.scales.x,ticks:{...chartDefaults.scales.x.ticks,callback:v=>v+':00'}}}} }
 );
 
 function loadDailyHistory(){
-    fetch('/api/daily-summary')
-        .then(r=>r.json())
-        .then(rows=>{
-            historyChart.data.labels   = rows.map(r=>r.hour);
-            historyChart.data.datasets[0].data = rows.map(r=>Math.round(r.avg_count));
-            historyChart.update();
-        });
+    fetch('/api/daily-summary').then(r=>r.json()).then(rows=>{
+        historyChart.data.labels=rows.map(r=>r.hour);
+        historyChart.data.datasets[0].data=rows.map(r=>Math.round(r.avg_count));
+        historyChart.update();
+    });
 }
 loadDailyHistory();
-setInterval(loadDailyHistory, 30000); // refresh every 30s
+setInterval(loadDailyHistory,30000);
 
 // ── SocketIO ───────────────────────────────────────────
 const socket = io();
 
-socket.on('connect', ()=>{
-    document.getElementById('ws-dot').className='connected';
-});
-socket.on('disconnect', ()=>{
-    document.getElementById('ws-dot').className='';
+socket.on('connect',()=>{ document.getElementById('ws-dot').className='connected'; });
+socket.on('disconnect',()=>{ document.getElementById('ws-dot').className=''; });
+
+socket.on('congestion_alert', data => {
+    showBanner(data.level.toLowerCase(), data.message);
 });
 
-socket.on('traffic_update', data=>{
+socket.on('traffic_update', data => {
     const ts = new Date().toTimeString().slice(0,8);
-    document.getElementById('last-updated').textContent='Updated '+ts;
-
+    document.getElementById('last-updated').textContent = 'Updated '+ts;
     setBadge(data.current_mode);
     setActiveBtn(data.current_mode);
-
-    // auto-open video panel if server is in video mode
     if(data.current_mode==='video') document.getElementById('right-col').classList.add('open');
-
-    if(data.current_mode==='video' && data.video_ready===false){
+    if(data.current_mode==='video'&&data.video_ready===false){
         document.getElementById('congestion').textContent='Waiting…';
         return;
     }
     if(!data.roads||!data.roads.length) return;
 
     const road = data.roads[0];
-    document.getElementById('vehicleCount').textContent    = road.vehicle_count??'--';
-    document.getElementById('greenTime').textContent       = (road.adaptive_green_time??'--')+'s';
-    document.getElementById('congestion').textContent      = road.congestion_level??'--';
-    document.getElementById('futureCongestion').textContent= road.future_congestion??'--';
+    document.getElementById('vehicleCount').textContent     = road.vehicle_count??'--';
+    document.getElementById('greenTime').textContent        = (road.adaptive_green_time??'--')+'s';
+    document.getElementById('congestion').textContent       = road.congestion_level??'--';
+    document.getElementById('futureCongestion').textContent = road.future_congestion??'--';
     document.getElementById('metrics-mode-label').textContent = data.current_mode.toUpperCase();
 
     const cls = congestionClass(road.congestion_level);
@@ -419,11 +372,41 @@ socket.on('traffic_update', data=>{
     document.getElementById('congestion-badge').innerHTML = cls
         ? `<div class="metric-badge ${cls}">${lbl[cls]}</div>` : '';
 
-    // update live chart
-    liveLabels.push(ts); liveData.push(road.vehicle_count);
-    if(liveLabels.length>15){liveLabels.shift();liveData.shift();}
+    // Confidence bars
+    setConfBar('conf-fill','conf-pct', road.congestion_confidence, cls);
+    const futCls = congestionClass(road.future_congestion);
+    setConfBar('fut-conf-fill','fut-conf-pct', road.future_confidence, futCls);
+
+    // Live chart with congestion-coloured points
+    const ptColor = cls==='red'?'#dc2626':cls==='amber'?'#d97706':'#16a34a';
+    liveLabels.push(ts); liveData.push(road.vehicle_count); liveColors.push(ptColor);
+    if(liveLabels.length>15){liveLabels.shift();liveData.shift();liveColors.shift();}
+    liveChart.data.datasets[0].pointBackgroundColor = liveColors;
     liveChart.update();
+
+    // Alert banner from traffic data (backup if socket event missed)
+    if(cls) showBanner(cls, {
+        red:'High congestion detected — expect significant delays.',
+        amber:'Moderate traffic — conditions may slow.',
+        green:'Traffic is flowing freely.'
+    }[cls]);
 });
+
+function setConfBar(fillId, pctId, pct, cls) {
+    const fill = document.getElementById(fillId);
+    const label = document.getElementById(pctId);
+    if(!fill||!label) return;
+    const v = pct??0;
+    fill.style.width = v+'%';
+    fill.className   = 'conf-fill '+(cls||'');
+    label.textContent = v ? v.toFixed(1)+'% confidence' : '—';
+}
+
+function showBanner(cls, msg) {
+    const b = document.getElementById('alert-banner');
+    document.getElementById('banner-msg').textContent = msg;
+    b.className = 'visible '+cls;
+}
 
 // ── Helpers ────────────────────────────────────────────
 function setBadge(mode){
@@ -431,47 +414,43 @@ function setBadge(mode){
     el.className=mode?'active':'';
     el.innerHTML=`<div class="live-dot"></div> Mode: ${mode?mode.toUpperCase():'--'}`;
 }
-
 function setActiveBtn(mode){
     ['btn-sim','btn-vid'].forEach(id=>document.getElementById(id).classList.remove('active'));
     if(mode==='simulation') document.getElementById('btn-sim').classList.add('active');
     if(mode==='video')      document.getElementById('btn-vid').classList.add('active');
 }
-
 function congestionClass(val){
     if(!val||val==='--') return '';
     const v=String(val).toLowerCase();
-    if(v==='low'||Number(val)<30)  return 'green';
-    if(v==='high'||Number(val)>60) return 'red';
+    if(v==='low')    return 'green';
+    if(v==='high')   return 'red';
     return 'amber';
 }
-
 function setMode(mode){
     const img=document.getElementById('videoStream');
     if(img){img.src='';img.className='';}
     fetch(`/set-mode/${mode}`).then(r=>r.json()).then(data=>{
-        setBadge(data.current_mode);
-        setActiveBtn(data.current_mode);
+        setBadge(data.current_mode);setActiveBtn(data.current_mode);
         const rc=document.getElementById('right-col');
         if(mode==='video'){rc.classList.add('open');}
         else{rc.classList.remove('open');document.getElementById('videoFeedContainer').classList.remove('visible');}
     });
 }
-
 function uploadVideo(){
     const file=document.getElementById('videoInput').files[0];
     if(!file){alert('Select a video first.');return;}
     const fd=new FormData();fd.append('video',file);
-    fetch('/upload-video',{method:'POST',body:fd})
-        .then(r=>r.json())
-        .then(()=>{
-            const c=document.getElementById('videoFeedContainer');
-            c.classList.add('visible');
-            document.getElementById('no-feed').style.display='none';
-            const img=document.getElementById('videoStream');
-            img.classList.add('visible');
-            img.src='/video_feed?rand='+Math.random();
-        });
+    fetch('/upload-video',{method:'POST',body:fd}).then(r=>r.json()).then(()=>{
+        const c=document.getElementById('videoFeedContainer');
+        c.classList.add('visible');
+        document.getElementById('no-feed').style.display='none';
+        const img=document.getElementById('videoStream');
+        img.classList.add('visible');
+        img.src='/video_feed?rand='+Math.random();
+    });
+}
+function exportData(){
+    window.location.href='/api/export/traffic';
 }
 </script>
 </body>

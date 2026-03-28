@@ -1,18 +1,18 @@
 """
 traffic_service.py
 ------------------
-- SQLite logging via db_service
-- Stronger future prediction using linear regression on history
-- Clean separation of simulation vs video logic
-- STOP_VIDEO flag management
+- Thread-safe global state (Lock on all mutable globals)
+- Passes confidence from model_service through to the response
+- Improved linear-regression forecast (same logic, now using full history)
+- Cleaner simulation random walk
 """
 
 import time
 import os
 import random
-import math
+import threading
 
-from services.video_service import detect_vehicles_from_video, release_video
+from services.video_service  import detect_vehicles_from_video, release_video
 from services.model_service  import predict_traffic
 from services.db_service     import log_traffic, init_db
 
@@ -21,49 +21,51 @@ BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(BASE_DIR))
 VIDEO_PATH   = os.path.join(PROJECT_ROOT, "backend", "uploaded_video.mp4")
 
-# ── Global flags ───────────────────────────────────────
+# ── Thread-safe state ──────────────────────────────────
+_state_lock     = threading.Lock()
+_STOP_VIDEO     = False
+_traffic_history: list[int] = []
+MAX_HISTORY     = 20          # longer window → steadier forecast
+
+# ── Public flag for video_service ─────────────────────
+# Read by video_service without locking (acceptable: single bool read is atomic in CPython)
 STOP_VIDEO = False
 
-# ── History buffer ─────────────────────────────────────
-traffic_history = []   # last 10 vehicle counts
-MAX_HISTORY     = 10
+
+def _set_stop_video(val: bool):
+    global STOP_VIDEO, _STOP_VIDEO
+    with _state_lock:
+        _STOP_VIDEO = val
+    STOP_VIDEO = val     # keep the module-level name in sync
 
 
 # ── Future prediction (linear regression) ─────────────
-def predict_future(history: list) -> int:
-    """
-    Fits a simple linear trend over the history window and
-    extrapolates one step ahead. More accurate than the old
-    first/last difference method.
-    """
+def _predict_future(history: list) -> int:
     n = len(history)
     if n == 0:
         return 0
     if n == 1:
         return history[0]
 
-    # least-squares slope
     x_mean = (n - 1) / 2
     y_mean = sum(history) / n
-    numerator   = sum((i - x_mean) * (history[i] - y_mean) for i in range(n))
-    denominator = sum((i - x_mean) ** 2 for i in range(n))
+    num    = sum((i - x_mean) * (history[i] - y_mean) for i in range(n))
+    den    = sum((i - x_mean) ** 2 for i in range(n))
+    slope  = num / den if den else 0
 
-    slope = numerator / denominator if denominator else 0
-    next_val = history[-1] + slope
-
-    return max(int(round(next_val)), 0)
+    return max(0, int(round(history[-1] + slope)))
 
 
 # ── Main status function ───────────────────────────────
 def get_traffic_status(mode: str) -> dict:
-    global STOP_VIDEO, traffic_history
+    global _traffic_history
 
     # ── Mode guard ────────────────────────────────────
     if mode != "video":
-        STOP_VIDEO = True
+        _set_stop_video(True)
         release_video()
     else:
-        STOP_VIDEO = False
+        _set_stop_video(False)
 
     # ── Vehicle count ─────────────────────────────────
     if mode == "video":
@@ -72,27 +74,28 @@ def get_traffic_status(mode: str) -> dict:
                 "timestamp":    time.strftime("%H:%M:%S"),
                 "current_mode": mode,
                 "video_ready":  False,
-                "roads":        []
+                "roads":        [],
             }
         vehicle_count = detect_vehicles_from_video(VIDEO_PATH)
-
     else:
-        # Simulation: gentle random walk so the chart looks realistic
-        base = traffic_history[-1] if traffic_history else 20
-        delta = random.randint(-5, 8)
+        with _state_lock:
+            base = _traffic_history[-1] if _traffic_history else 20
+        delta         = random.randint(-5, 8)
         vehicle_count = max(1, min(80, base + delta))
 
-    # ── ML prediction ─────────────────────────────────
-    congestion, green_time = predict_traffic(vehicle_count)
+    # ── ML prediction (now returns confidence too) ────
+    congestion, green_time, confidence = predict_traffic(vehicle_count)
 
-    # ── History ───────────────────────────────────────
-    traffic_history.append(vehicle_count)
-    if len(traffic_history) > MAX_HISTORY:
-        traffic_history = traffic_history[-MAX_HISTORY:]
+    # ── Update history ────────────────────────────────
+    with _state_lock:
+        _traffic_history.append(vehicle_count)
+        if len(_traffic_history) > MAX_HISTORY:
+            _traffic_history = _traffic_history[-MAX_HISTORY:]
+        history_snapshot = list(_traffic_history)
 
     # ── Future prediction ─────────────────────────────
-    future_vehicle  = predict_future(traffic_history)
-    future_cong, _  = predict_traffic(future_vehicle)
+    future_vehicle          = _predict_future(history_snapshot)
+    future_cong, _, fut_conf = predict_traffic(future_vehicle)
 
     # ── Log to SQLite ─────────────────────────────────
     try:
@@ -106,9 +109,11 @@ def get_traffic_status(mode: str) -> dict:
         "current_mode": mode,
         "video_ready":  True,
         "roads": [{
-            "vehicle_count":       vehicle_count,
-            "congestion_level":    congestion,
-            "future_congestion":   future_cong,
-            "adaptive_green_time": green_time
-        }]
+            "vehicle_count":        vehicle_count,
+            "congestion_level":     congestion,
+            "congestion_confidence": confidence,      # NEW
+            "future_congestion":    future_cong,
+            "future_confidence":    fut_conf,          # NEW
+            "adaptive_green_time":  green_time,
+        }],
     }
