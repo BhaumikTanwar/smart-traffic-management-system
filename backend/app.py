@@ -5,6 +5,9 @@ from flask import jsonify, Response
 
 from services.traffic_service import get_traffic_status
 from services.video_service import detect_vehicles_from_video
+from services.video_service import generate_video_stream
+from flask import Response
+from flask import request
 
 # -----------------------------
 # App setup
@@ -46,6 +49,62 @@ def get_video():
         return "No video", 404
 
     return send_file(video_path)
+
+################################
+import random
+nodes = {
+    "A":10,
+    "B":20,
+    "C":15,
+    "D":5,
+    "E":8
+}
+
+graph = {
+    "A":["B","D"],
+    "B":["A","C","E"],
+    "C":["B"],
+    "D":["A","E"],
+    "E":["B","D"]
+}
+
+def compute_influence(node):
+    influence = 0
+    for neighbor in graph[node]:
+        influence += nodes[neighbor] * 0.4
+    return nodes[node] + influence
+
+@app.route("/api/spiderweb-data", methods=["POST"])
+def spiderweb_data():
+
+    data = request.get_json()
+
+    nodes = data.get("nodes", {})
+    edges = data.get("edges", {})
+
+    result = {}
+
+    for node in nodes:
+        own = random.randint(5,30)
+
+        influence = 0
+        for neighbor in edges.get(node, []):
+            influence += random.randint(5,20) * 0.4
+
+        result[node] = int(own + influence)
+
+    return result
+######################################################
+
+@app.route("/video_feed")
+def video_feed():
+
+    video_path = os.path.join(os.path.dirname(__file__), "uploaded_video.mp4")
+
+    return Response(
+        generate_video_stream(video_path),
+        mimetype="multipart/x-mixed-replace; boundary=frame"
+    )
 # -----------------------------
 # Upload Video
 # -----------------------------
@@ -70,6 +129,10 @@ def upload_video():
 @app.route("/")
 def index():
     return render_template("index.html")
+
+@app.route("/spiderweb")
+def spiderweb():
+    return render_template("spiderweb.html")
 
 
 @app.route("/login", methods=["GET", "POST"])

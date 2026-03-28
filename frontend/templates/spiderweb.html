@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Spiderweb Traffic Model</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&family=Playfair+Display:wght@500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <style>
+        :root {
+            --bg:        #f5f3ef;
+            --surface:   #ffffff;
+            --surface2:  #faf9f7;
+            --border:    #e8e4de;
+            --border2:   #d6d0c8;
+            --text:      #1a1814;
+            --text2:     #6b6560;
+            --text3:     #a39f99;
+            --accent:    #2563eb;
+            --green:     #16a34a;
+            --amber:     #d97706;
+            --red:       #dc2626;
+            --green-bg:  #f0fdf4;
+            --amber-bg:  #fffbeb;
+            --red-bg:    #fef2f2;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            --shadow:    0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+            --font:      'DM Sans', sans-serif;
+            --mono:      'DM Mono', monospace;
+            --serif:     'Playfair Display', serif;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: var(--font);
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── TOPBAR ── */
+        #topbar {
+            height: 52px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 16px;
+            flex-shrink: 0;
+            z-index: 100;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+        }
+
+        .brand-icon {
+            width: 30px; height: 30px;
+            background: var(--text);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 15px;
+        }
+
+        .brand-name {
+            font-family: var(--serif);
+            font-size: 16px;
+            font-weight: 500;
+            color: var(--text);
+            letter-spacing: 0.01em;
+        }
+
+        .brand-sub {
+            font-size: 11px;
+            color: var(--text3);
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            font-weight: 500;
+        }
+
+        .divider-v {
+            width: 1px;
+            height: 20px;
+            background: var(--border);
+        }
+
+        .live-pill {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background: var(--green-bg);
+            border: 1px solid #bbf7d0;
+            border-radius: 20px;
+            padding: 3px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--green);
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .live-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--green);
+            animation: pulse-dot 1.8s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.7); }
+        }
+
+        .topbar-right {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .legend {
+            display: flex;
+            gap: 14px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11.5px;
+            color: var(--text2);
+            font-weight: 500;
+        }
+
+        .legend-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+        }
+
+        #refresh-timer {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--text3);
+            min-width: 36px;
+            text-align: right;
+        }
+
+        /* ── LAYOUT ── */
+        #layout {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* ── MAP ── */
+        #map-wrap {
+            flex: 1;
+            position: relative;
+        }
+
+        #map { width: 100%; height: 100%; }
+
+        #hint {
+            position: absolute;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255,255,255,0.9);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 7px 18px;
+            font-size: 12px;
+            color: var(--text2);
+            font-weight: 500;
+            backdrop-filter: blur(8px);
+            box-shadow: var(--shadow);
+            pointer-events: none;
+            z-index: 400;
+            white-space: nowrap;
+            transition: opacity 0.5s;
+        }
+
+        /* ── PANEL ── */
+        #panel {
+            width: 300px;
+            height: 100%;
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            animation: slideIn 0.4s cubic-bezier(0.16,1,0.3,1);
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(20px); opacity: 0; }
+            to   { transform: translateX(0);    opacity: 1; }
+        }
+
+        /* ── METRICS ── */
+        #metrics-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .metric {
+            padding: 14px 16px;
+            border-right: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            transition: background 0.15s;
+        }
+
+        .metric:nth-child(2) { border-right: none; }
+        .metric:nth-child(4) { border-right: none; }
+
+        .metric:hover { background: var(--surface2); }
+
+        .metric-val {
+            font-family: var(--mono);
+            font-size: 22px;
+            font-weight: 500;
+            color: var(--text);
+            letter-spacing: -0.02em;
+            line-height: 1;
+        }
+
+        .metric-lbl {
+            font-size: 10.5px;
+            color: var(--text3);
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            font-weight: 500;
+            margin-top: 5px;
+        }
+
+        /* ── NODE INSPECTOR ── */
+        #node-panel {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+            min-height: 128px;
+        }
+
+        .panel-heading {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text3);
+            margin-bottom: 12px;
+        }
+
+        .node-name {
+            font-family: var(--serif);
+            font-size: 20px;
+            font-weight: 500;
+            color: var(--text);
+            margin-bottom: 8px;
+            line-height: 1.2;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            border-radius: 6px;
+            padding: 3px 9px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        .status-badge.green { background: var(--green-bg); color: var(--green); border: 1px solid #bbf7d0; }
+        .status-badge.amber { background: var(--amber-bg); color: var(--amber); border: 1px solid #fde68a; }
+        .status-badge.red   { background: var(--red-bg);   color: var(--red);   border: 1px solid #fecaca; }
+
+        .bar-track {
+            height: 3px;
+            background: var(--border);
+            border-radius: 99px;
+            margin: 10px 0 6px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            border-radius: 99px;
+            transition: width 0.7s cubic-bezier(0.4,0,0.2,1), background 0.5s;
+        }
+
+        .bar-label {
+            display: flex;
+            justify-content: space-between;
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text3);
+        }
+
+        .node-desc {
+            margin-top: 10px;
+            font-size: 12px;
+            color: var(--text2);
+            line-height: 1.65;
+        }
+
+        /* ── FEED ── */
+        #feed-wrap {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #feed-head {
+            padding: 12px 16px 10px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text3);
+            border-bottom: 1px solid var(--border);
+        }
+
+        #feed {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px 0;
+        }
+
+        #feed::-webkit-scrollbar { width: 3px; }
+        #feed::-webkit-scrollbar-track { background: transparent; }
+        #feed::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+
+        .feed-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 7px 16px;
+            transition: background 0.15s;
+            animation: fadeUp 0.22s ease;
+        }
+
+        @keyframes fadeUp {
+            from { transform: translateY(5px); opacity: 0; }
+            to   { transform: translateY(0);   opacity: 1; }
+        }
+
+        .feed-row:hover { background: var(--surface2); }
+
+        .feed-pip {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            margin-top: 5px;
+            flex-shrink: 0;
+        }
+
+        .feed-msg {
+            font-size: 12px;
+            color: var(--text2);
+            line-height: 1.5;
+            flex: 1;
+        }
+
+        .feed-time {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--text3);
+            margin-top: 2px;
+        }
+
+        /* ── LEAFLET TWEAKS ── */
+        .leaflet-popup-content-wrapper {
+            background: var(--surface) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: 10px !important;
+            box-shadow: var(--shadow) !important;
+            color: var(--text) !important;
+            font-family: var(--font) !important;
+            padding: 0 !important;
+        }
+        .leaflet-popup-content { margin: 12px 16px !important; }
+        .leaflet-popup-tip-container { display: none; }
+        .leaflet-control-attribution { display: none; }
+        .leaflet-control-zoom a {
+            background: var(--surface) !important;
+            border-color: var(--border) !important;
+            color: var(--text2) !important;
+            font-family: var(--font) !important;
+            box-shadow: var(--shadow-sm) !important;
+        }
+        .leaflet-control-zoom a:hover { background: var(--surface2) !important; }
+    </style>
+</head>
+<body>
+
+<div id="topbar">
+    <div class="brand">
+        <div class="brand-icon">🕸</div>
+        <div>
+            <div class="brand-name">Spiderweb</div>
+            <div class="brand-sub">Traffic Intelligence</div>
+        </div>
+    </div>
+    <div class="divider-v"></div>
+    <div class="live-pill"><div class="live-dot"></div>Live</div>
+    <div class="topbar-right">
+        <div class="legend">
+            <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Clear</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div> Moderate</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div> Congested</div>
+        </div>
+        <div class="divider-v"></div>
+        <div id="refresh-timer">2.0s</div>
+    </div>
+</div>
+
+<div id="layout">
+    <div id="map-wrap">
+        <div id="map"></div>
+        <div id="hint">+ Click anywhere to place an intersection node</div>
+    </div>
+
+    <div id="panel">
+        <div id="metrics-row">
+            <div class="metric"><div class="metric-val" id="m-nodes">5</div><div class="metric-lbl">Nodes</div></div>
+            <div class="metric"><div class="metric-val" id="m-edges">6</div><div class="metric-lbl">Edges</div></div>
+            <div class="metric"><div class="metric-val" id="m-avg">—</div><div class="metric-lbl">Avg Load</div></div>
+            <div class="metric"><div class="metric-val" id="m-hot">—</div><div class="metric-lbl">Hotspot</div></div>
+        </div>
+
+        <div id="node-panel">
+            <div class="panel-heading">Node Inspector</div>
+            <div id="node-content" style="color:var(--text3);font-size:12.5px;line-height:1.7;">
+                Select a node on the map<br>to inspect its traffic state.
+            </div>
+        </div>
+
+        <div id="feed-wrap">
+            <div id="feed-head">Activity</div>
+            <div id="feed"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+const map = L.map('map', { zoomControl: true }).setView([28.6139, 77.2090], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+let nodes = {
+    A:{lat:28.61,lng:77.20}, B:{lat:28.62,lng:77.21},
+    C:{lat:28.63,lng:77.22}, D:{lat:28.615,lng:77.19},
+    E:{lat:28.625,lng:77.205}
+};
+let edges = { A:["B","D"], B:["A","C","E"], C:["B"], D:["A","E"], E:["B","D"] };
+let markers={}, polylines={}, nodeCount=6, lastData={};
+
+function getColor(v) {
+    if(v<20) return {hex:'#16a34a',cls:'green',label:'Clear'};
+    if(v<40) return {hex:'#d97706',cls:'amber',label:'Moderate'};
+    return         {hex:'#dc2626',cls:'red',  label:'Congested'};
+}
+
+function makeMarker(key) {
+    const m = L.circleMarker([nodes[key].lat,nodes[key].lng],{
+        radius:10,color:'#a39f99',fillColor:'#a39f99',fillOpacity:1,weight:2.5
+    }).addTo(map);
+    m.bindPopup(`<div style="font-family:'Playfair Display',serif;font-size:15px;font-weight:500;color:#1a1814;">${key}</div><div style="font-size:11px;color:#a39f99;margin-top:2px;">Intersection node</div>`);
+    return m;
+}
+
+for(let k in nodes) markers[k]=makeMarker(k);
+
+function drawEdge(a,b){
+    const id=a+'-'+b;
+    if(polylines[id]) return;
+    polylines[id]=L.polyline([[nodes[a].lat,nodes[a].lng],[nodes[b].lat,nodes[b].lng]],{
+        color:'#d6d0c8',weight:2,opacity:0.85
+    }).addTo(map);
+}
+for(let a in edges) edges[a].forEach(b=>drawEdge(a,b));
+
+map.on('click',e=>{
+    const name='N'+nodeCount++;
+    nodes[name]={lat:e.latlng.lat,lng:e.latlng.lng};
+    edges[name]=[];
+    markers[name]=makeMarker(name);
+
+    let nearest=null,minD=Infinity;
+    for(let n in nodes){
+        if(n===name) continue;
+        const d=map.distance([nodes[n].lat,nodes[n].lng],[e.latlng.lat,e.latlng.lng]);
+        if(d<minD){minD=d;nearest=n;}
+    }
+    if(nearest){edges[name].push(nearest);edges[nearest].push(name);drawEdge(name,nearest);}
+
+    document.getElementById('m-nodes').textContent=Object.keys(nodes).length;
+    document.getElementById('m-edges').textContent=countEdges();
+    addFeed(`Node ${name} placed`,'#16a34a');
+    document.getElementById('hint').style.opacity='0';
+});
+
+function countEdges(){let t=0;for(let n in edges)t+=edges[n].length;return t/2;}
+
+function showNode(node,val){
+    const c=getColor(val);
+    const pct=Math.min(100,(val/60)*100);
+    const desc=c.cls==='green'
+        ?'Traffic flowing freely. No notable congestion from neighbouring intersections.'
+        :c.cls==='amber'
+        ?'Moderate load. Partial spillover from adjacent nodes causing mild delays.'
+        :'Heavy congestion. Strong propagation effect from neighbouring intersections.';
+    document.getElementById('node-content').innerHTML=`
+        <div class="node-name">Node ${node}</div>
+        <div class="status-badge ${c.cls}"><span style="font-size:8px;">●</span> ${c.label}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${c.hex};"></div></div>
+        <div class="bar-label"><span>Load index</span><span style="color:${c.hex};font-weight:500;">${val}</span></div>
+        <div class="node-desc">${desc}</div>`;
+}
+
+function addFeed(msg,color){
+    const feed=document.getElementById('feed');
+    const t=new Date().toTimeString().slice(0,8);
+    const row=document.createElement('div');
+    row.className='feed-row';
+    row.innerHTML=`<div class="feed-pip" style="background:${color}"></div><div><div class="feed-msg">${msg}</div><div class="feed-time">${t}</div></div>`;
+    feed.insertBefore(row,feed.firstChild);
+    while(feed.children.length>24) feed.removeChild(feed.lastChild);
+}
+
+addFeed('System initialised','#16a34a');
+
+function animateEdge(line,val){
+    const c=getColor(val);
+    line.setStyle({color:c.hex,weight:3.5,opacity:0.8});
+    setTimeout(()=>line.setStyle({color:'#d6d0c8',weight:2,opacity:0.85}),900);
+}
+
+function simulate(){
+    const d={};
+    for(let n in nodes) d[n]=Math.floor(8+Math.random()*54);
+    return d;
+}
+
+let countdown=2.0;
+setInterval(()=>{
+    countdown-=0.1;
+    if(countdown<0.05) countdown=2.0;
+    document.getElementById('refresh-timer').textContent=countdown.toFixed(1)+'s';
+},100);
+
+function update(){
+    const p=fetch('/api/spiderweb-data',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({nodes,edges}),signal:AbortSignal.timeout(1400)
+    }).then(r=>r.json()).catch(()=>simulate());
+
+    p.then(data=>{
+        let total=0,hotNode=null,hotVal=-1;
+        for(let node in data){
+            if(!markers[node]) continue;
+            const val=data[node],prev=lastData[node]??-1,c=getColor(val);
+            total+=val;
+            if(val>hotVal){hotVal=val;hotNode=node;}
+
+            markers[node].setStyle({color:c.hex,fillColor:c.hex,radius:val>40?12:10,weight:val>40?3:2});
+            markers[node].bindPopup(`<div style="font-family:'Playfair Display',serif;font-size:15px;font-weight:500;color:#1a1814;">Node ${node}</div><div style="font-size:11px;color:${c.hex};margin-top:3px;font-weight:600;">${c.label} · ${val}</div>`);
+            markers[node].off('click').on('click',()=>showNode(node,val));
+
+            if(prev!==-1){
+                const prevC=getColor(prev).cls,nowC=c.cls;
+                if(prevC!==nowC){
+                    if(nowC==='red')   addFeed(`${node} entered congestion`,'#dc2626');
+                    if(nowC==='green') addFeed(`${node} cleared`,'#16a34a');
+                    if(nowC==='amber') addFeed(`${node} moderate traffic`,'#d97706');
+                }
+            }
+
+            if(edges[node]) edges[node].forEach(nb=>{
+                const line=polylines[node+'-'+nb]||polylines[nb+'-'+node];
+                if(line) animateEdge(line,val);
+            });
+        }
+        lastData={...data};
+        const cnt=Object.keys(data).length;
+        document.getElementById('m-avg').textContent=cnt?Math.round(total/cnt):'—';
+        document.getElementById('m-hot').textContent=hotNode||'—';
+    });
+}
+
+setInterval(update,2000);
+update();
+</script>
+</body>
+</html>

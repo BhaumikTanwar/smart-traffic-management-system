@@ -65,6 +65,9 @@
     <h2>⚙️ System Controls</h2>
     <button onclick="setMode('simulation')">Simulation Mode</button>
     <button onclick="setMode('video')">Video Mode</button>
+    <button onclick="window.location.href='/spiderweb'">
+        Spiderweb Mode
+    </button>
     <span class="badge" id="currentModeBadge">Mode: --</span>
 </div>
 
@@ -102,7 +105,7 @@
     <button onclick="uploadVideo()">Upload</button>
 
     <div id="videoFeedContainer">
-        <video id="videoPlayer" width="100%" controls style="display:none;"></video>
+        <img id="videoStream" width="100%" style="display:none;" />
     </div>
 </div>
 
@@ -132,13 +135,11 @@ const trafficChart = new Chart(ctx, {
 
 function setMode(mode) {
 
-    // 🔥 STOP VIDEO BEFORE SWITCH
-    const video = document.getElementById("videoPlayer");
+    // 🔥 STOP VIDEO STREAM
+    const img = document.getElementById("videoStream");
 
-    if(video){
-        video.pause();
-        video.src = "";
-        video.load();
+    if(img){
+        img.src = "";
     }
 
     fetch(`/set-mode/${mode}`)
@@ -177,20 +178,13 @@ function uploadVideo(){
     .then(data=>{
         alert("Video Uploaded!");
 
-        // SHOW CONTAINER
         const container = document.getElementById("videoFeedContainer");
         container.style.display = "block";
 
-        // LOAD VIDEO
-        const video = document.getElementById("videoPlayer");
+        const img = document.getElementById("videoStream");
 
-        video.style.display = "block";
-
-        // 🔥 FORCE RELOAD VIDEO
-        video.src = "/get-video?rand=" + Math.random();
-
-        video.load();
-        video.play();   // 🔥 IMPORTANT
+        img.style.display = "block";
+        img.src = "/video_feed?rand=" + Math.random();
     });
 }
 

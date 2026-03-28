@@ -25,6 +25,48 @@ def release_video():
         cap = None
         cv2.destroyAllWindows()
         print("📹 Video released")
+
+def generate_video_stream(video_path):
+
+    global cap
+
+    if cap is None:
+        cap = cv2.VideoCapture(video_path)
+
+    while True:
+
+        if ts.STOP_VIDEO:
+            release_video()
+            break
+
+        ret, frame = cap.read()
+        if not ret:
+            release_video()
+            break
+
+        results = model(frame)[0]
+
+        count = 0
+
+        for box in results.boxes:
+            cls = int(box.cls[0])
+
+            if cls in VEHICLE_CLASSES:
+                count += 1
+
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
+
+                label = model.names[cls]
+                cv2.putText(frame, label, (x1, y1-10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2)
+
+        # encode frame
+        _, buffer = cv2.imencode('.jpg', frame)
+        frame_bytes = buffer.tobytes()
+
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
         
 def detect_vehicles_from_video(video_path):
 
