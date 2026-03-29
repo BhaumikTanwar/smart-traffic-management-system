@@ -111,39 +111,123 @@ def on_connect():
     emit("traffic_update", get_traffic_status(get_mode()))
 
 
-# ── Spiderweb ──────────────────────────────────────────
+# ── Spiderweb state (persisted across requests) ────────
+_spider_state = {}   # {node: float}  current congestion value
+_spider_lock  = threading.Lock()
+
+
 @app.route("/api/spiderweb-data", methods=["POST"])
 def spiderweb_data():
     data  = request.get_json()
     nodes = data.get("nodes", {})
     edges = data.get("edges", {})
 
-    congestion = {node: random.randint(5, 30) for node in nodes}
+    # ── Tunables ───────────────────────────────────────
+    NATURAL_DECAY = 0.92      # congestion fades slowly on its own
+    EVENT_PROB    = 0.15      # chance of a new congestion spike per tick
+    EVENT_MIN     = 60        # min spike value
+    EVENT_MAX     = 90        # max spike value
+    NOISE         = 1.5       # small jitter so map feels alive
+    FLOW_RATE     = 0.30      # fraction of a node's load that flows out per tick
 
-    ROUNDS = 3
-    DECAY  = 0.85
-    SPREAD = 0.35
-
-    for _ in range(ROUNDS):
-        new_cong = {}
+    with _spider_lock:
+        # 1. Seed new nodes at idle — inherit a little from nearest neighbour
         for node in nodes:
-            neighbours        = edges.get(node, [])
-            own               = congestion[node] * DECAY
-            neighbour_influence = sum(congestion.get(nb, 0) * SPREAD for nb in neighbours)
-            new_cong[node]    = int(own + neighbour_influence)
-        congestion = new_cong
+            if node not in _spider_state:
+                neighbours = edges.get(node, [])
+                if neighbours:
+                    # new node draws a small fraction from each neighbour's load
+                    avg_nb = sum(_spider_state.get(nb, 10) for nb in neighbours) / len(neighbours)
+                    _spider_state[node] = avg_nb * 0.25   # starts low, not zero
+                else:
+                    _spider_state[node] = random.uniform(5, 12)
 
-    congestion = {n: max(5, min(90, v)) for n, v in congestion.items()}
+        # 2. Drop nodes that were removed
+        for gone in [n for n in list(_spider_state) if n not in nodes]:
+            del _spider_state[gone]
+
+        # 3. Random congestion event (simulates real-world traffic surge)
+        if nodes and random.random() < EVENT_PROB:
+            hotspot = random.choice(list(nodes.keys()))
+            _spider_state[hotspot] = min(90, _spider_state[hotspot] + random.uniform(EVENT_MIN, EVENT_MAX))
+            log.info("Congestion event at %s", hotspot)
+
+        # 4. Flow-based propagation
+        #    Each node pushes FLOW_RATE of its load to neighbours,
+        #    split proportionally by degree. High-degree nodes distribute
+        #    more efficiently — so adding a well-connected node genuinely helps.
+        delta = {node: 0.0 for node in nodes}
+
+        for node in nodes:
+            neighbours = edges.get(node, [])
+            degree     = len(neighbours)
+            if degree == 0:
+                continue   # isolated node — no flow possible
+
+            load_to_distribute = _spider_state[node] * FLOW_RATE
+
+            # flow is split equally across all edges
+            per_edge = load_to_distribute / degree
+
+            for nb in neighbours:
+                if nb not in nodes:
+                    continue
+                nb_degree = len(edges.get(nb, []))
+
+                # neighbour only absorbs if it has capacity (its own load is lower)
+                # if neighbour is already more congested, flow is resisted
+                nb_load = _spider_state.get(nb, 0)
+                own_load = _spider_state[node]
+
+                if own_load > nb_load:
+                    # flow goes from node → neighbour
+                    # resistance: the closer neighbour is to own load, the less flows
+                    resistance = 1.0 - (nb_load / max(own_load, 1))
+                    actual_flow = per_edge * resistance
+
+                    delta[node] -= actual_flow        # node loses this load
+                    delta[nb]   += actual_flow        # neighbour gains it
+
+        # 5. Apply delta + natural decay + noise
+        new_state = {}
+        for node in nodes:
+            raw = (_spider_state[node] + delta[node]) * NATURAL_DECAY
+            raw += random.uniform(-NOISE, NOISE)
+            new_state[node] = max(5.0, min(90.0, raw))
+
+        _spider_state.update(new_state)
+        result = {n: int(round(v)) for n, v in new_state.items()}
 
     try:
-        log_spiderweb(congestion)
+        log_spiderweb(result)
     except Exception as e:
         log.warning("Spiderweb DB log error: %s", e)
 
-    return jsonify(congestion)
+    return jsonify(result)
 
 
-# ── History API ────────────────────────────────────────
+@app.route("/api/spiderweb-reset", methods=["POST"])
+def spiderweb_reset():
+    data  = request.get_json()
+    level = data.get("level", "low")   # low | moderate | high
+
+    seed_ranges = {
+        "low":      (5,  20),
+        "moderate": (30, 55),
+        "high":     (60, 85),
+    }
+    lo, hi = seed_ranges.get(level, (5, 20))
+
+    with _spider_lock:
+        # Re-seed existing nodes at the chosen level; clear history
+        for node in _spider_state:
+            _spider_state[node] = random.uniform(lo, hi)
+
+    log.info("Spiderweb reset — level: %s (%d–%d)", level, lo, hi)
+    return jsonify({"status": "reset", "level": level})
+
+
+
 @app.route("/api/history")
 def history():
     limit = int(request.args.get("limit", 30))

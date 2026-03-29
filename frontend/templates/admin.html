@@ -46,7 +46,7 @@
             transition: background .3s, color .3s;
         }
         #alert-banner.visible { display: flex; }
-        #alert-banner.red    { background: var(--red-bg);   color: var(--red);   border-color: #fecaca; --topbar-h: 84px; }
+        #alert-banner.red    { background: var(--red-bg);   color: var(--red);   border-color: #fecaca; }
         #alert-banner.amber  { background: var(--amber-bg); color: var(--amber); border-color: #fde68a; }
         #alert-banner.green  { background: var(--green-bg); color: var(--green); border-color: #bbf7d0; }
         .banner-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulse-dot 1.4s ease-in-out infinite; }
@@ -406,6 +406,10 @@ function showBanner(cls, msg) {
     const b = document.getElementById('alert-banner');
     document.getElementById('banner-msg').textContent = msg;
     b.className = 'visible '+cls;
+    requestAnimationFrame(() => {
+        const bannerH = b.offsetHeight;
+        document.getElementById('page').style.top = (52 + bannerH) + 'px';
+    });
 }
 
 // ── Helpers ────────────────────────────────────────────
