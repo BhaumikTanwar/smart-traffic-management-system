@@ -23,6 +23,7 @@ from services.traffic_service import get_traffic_status
 from services.video_service   import detect_vehicles_from_video, generate_video_stream
 from services.video_service   import open_video, release_video
 from services.db_service      import init_db, get_recent_traffic, get_daily_summary, log_spiderweb, get_spiderweb_history
+from services.osm_service     import fetch_osm_network
 
 # ── Logging ────────────────────────────────────────────
 logging.basicConfig(
@@ -111,89 +112,118 @@ def on_connect():
     emit("traffic_update", get_traffic_status(get_mode()))
 
 
-# ── Spiderweb state (persisted across requests) ────────
-_spider_state = {}   # {node: float}  current congestion value
+# ── OSM network ────────────────────────────────────────
+@app.route("/api/osm-network")
+def osm_network():
+    try:
+        net = fetch_osm_network()
+        return jsonify(net)
+    except Exception as e:
+        log.error("OSM network error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/osm-refresh")
+def osm_refresh():
+    try:
+        net = fetch_osm_network(force=True)
+        return jsonify({"status": "refreshed", "nodes": len(net["nodes"])})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ── Spiderweb state ────────────────────────────────────
+_spider_state = {}
 _spider_lock  = threading.Lock()
+TOTAL_VEHICLE_POOL = 500   # conservation anchor
 
 
 @app.route("/api/spiderweb-data", methods=["POST"])
 def spiderweb_data():
-    data  = request.get_json()
-    nodes = data.get("nodes", {})
-    edges = data.get("edges", {})
+    data       = request.get_json()
+    nodes      = data.get("nodes", {})
+    edges      = data.get("edges", {})
+    roles      = data.get("roles", {})
+    generators = [n for n in nodes if roles.get(n) == "generator"]
+    sinks      = [n for n in nodes if roles.get(n) == "sink"]
 
-    # ── Tunables ───────────────────────────────────────
-    NATURAL_DECAY = 0.92      # congestion fades slowly on its own
-    EVENT_PROB    = 0.15      # chance of a new congestion spike per tick
-    EVENT_MIN     = 60        # min spike value
-    EVENT_MAX     = 90        # max spike value
-    NOISE         = 1.5       # small jitter so map feels alive
-    FLOW_RATE     = 0.30      # fraction of a node's load that flows out per tick
+    FLOW_RATE     = 0.28
+    SINK_DRAIN    = 0.40
+    GEN_RATE      = 0.15
+    GEN_BOOST_MIN = 30
+    GEN_BOOST_MAX = 60
+    NOISE         = 1.2
 
     with _spider_lock:
-        # 1. Seed new nodes at idle — inherit a little from nearest neighbour
+        # Seed new nodes
         for node in nodes:
             if node not in _spider_state:
-                neighbours = edges.get(node, [])
-                if neighbours:
-                    # new node draws a small fraction from each neighbour's load
-                    avg_nb = sum(_spider_state.get(nb, 10) for nb in neighbours) / len(neighbours)
-                    _spider_state[node] = avg_nb * 0.25   # starts low, not zero
+                role = roles.get(node, "normal")
+                if role == "generator":
+                    _spider_state[node] = random.uniform(40, 65)
+                elif role == "sink":
+                    _spider_state[node] = random.uniform(5, 15)
                 else:
-                    _spider_state[node] = random.uniform(5, 12)
+                    neighbours = edges.get(node, [])
+                    if neighbours:
+                        avg_nb = sum(_spider_state.get(nb, 20) for nb in neighbours) / len(neighbours)
+                        _spider_state[node] = avg_nb * 0.25
+                    else:
+                        _spider_state[node] = random.uniform(10, 30)
 
-        # 2. Drop nodes that were removed
+        # Remove deleted nodes
         for gone in [n for n in list(_spider_state) if n not in nodes]:
             del _spider_state[gone]
 
-        # 3. Random congestion event (simulates real-world traffic surge)
-        if nodes and random.random() < EVENT_PROB:
-            hotspot = random.choice(list(nodes.keys()))
-            _spider_state[hotspot] = min(90, _spider_state[hotspot] + random.uniform(EVENT_MIN, EVENT_MAX))
-            log.info("Congestion event at %s", hotspot)
+        # Generator injection
+        for gen in generators:
+            if random.random() < GEN_RATE:
+                boost = random.uniform(GEN_BOOST_MIN, GEN_BOOST_MAX)
+                _spider_state[gen] = min(90, _spider_state[gen] + boost)
+                log.info("Generator event at %s (+%.0f)", gen, boost)
 
-        # 4. Flow-based propagation
-        #    Each node pushes FLOW_RATE of its load to neighbours,
-        #    split proportionally by degree. High-degree nodes distribute
-        #    more efficiently — so adding a well-connected node genuinely helps.
+        # Vehicle-conserving flow
         delta = {node: 0.0 for node in nodes}
 
         for node in nodes:
             neighbours = edges.get(node, [])
-            degree     = len(neighbours)
-            if degree == 0:
-                continue   # isolated node — no flow possible
+            if not neighbours:
+                continue
 
-            load_to_distribute = _spider_state[node] * FLOW_RATE
+            own_load = _spider_state[node]
 
-            # flow is split equally across all edges
-            per_edge = load_to_distribute / degree
+            # Sinks drain and absorb — vehicles leave the network
+            if roles.get(node) == "sink":
+                delta[node] -= own_load * SINK_DRAIN
+                continue
 
-            for nb in neighbours:
-                if nb not in nodes:
-                    continue
-                nb_degree = len(edges.get(nb, []))
+            # Flow only downhill (higher → lower congestion)
+            eligible = [nb for nb in neighbours
+                        if nb in nodes and _spider_state.get(nb, 0) < own_load]
+            if not eligible:
+                continue
 
-                # neighbour only absorbs if it has capacity (its own load is lower)
-                # if neighbour is already more congested, flow is resisted
-                nb_load = _spider_state.get(nb, 0)
-                own_load = _spider_state[node]
+            load_to_push = own_load * FLOW_RATE
+            gaps         = [own_load - _spider_state.get(nb, 0) for nb in eligible]
+            total_gap    = sum(gaps)
 
-                if own_load > nb_load:
-                    # flow goes from node → neighbour
-                    # resistance: the closer neighbour is to own load, the less flows
-                    resistance = 1.0 - (nb_load / max(own_load, 1))
-                    actual_flow = per_edge * resistance
+            for nb, gap in zip(eligible, gaps):
+                share = (gap / total_gap) * load_to_push
+                delta[node] -= share
+                delta[nb]   += share
 
-                    delta[node] -= actual_flow        # node loses this load
-                    delta[nb]   += actual_flow        # neighbour gains it
-
-        # 5. Apply delta + natural decay + noise
+        # Apply + noise + clamp
         new_state = {}
         for node in nodes:
-            raw = (_spider_state[node] + delta[node]) * NATURAL_DECAY
-            raw += random.uniform(-NOISE, NOISE)
-            new_state[node] = max(5.0, min(90.0, raw))
+            raw = _spider_state[node] + delta[node] + random.uniform(-NOISE, NOISE)
+            lo  = 15.0 if roles.get(node) == "generator" else 2.0
+            new_state[node] = max(lo, min(90.0, raw))
+
+        # Soft conservation rescale
+        total = sum(new_state.values())
+        if total > 0 and abs(total - TOTAL_VEHICLE_POOL) / TOTAL_VEHICLE_POOL > 0.30:
+            scale = TOTAL_VEHICLE_POOL / total
+            new_state = {n: max(2.0, min(90.0, v * scale)) for n, v in new_state.items()}
 
         _spider_state.update(new_state)
         result = {n: int(round(v)) for n, v in new_state.items()}
@@ -204,27 +234,6 @@ def spiderweb_data():
         log.warning("Spiderweb DB log error: %s", e)
 
     return jsonify(result)
-
-
-@app.route("/api/spiderweb-reset", methods=["POST"])
-def spiderweb_reset():
-    data  = request.get_json()
-    level = data.get("level", "low")   # low | moderate | high
-
-    seed_ranges = {
-        "low":      (5,  20),
-        "moderate": (30, 55),
-        "high":     (60, 85),
-    }
-    lo, hi = seed_ranges.get(level, (5, 20))
-
-    with _spider_lock:
-        # Re-seed existing nodes at the chosen level; clear history
-        for node in _spider_state:
-            _spider_state[node] = random.uniform(lo, hi)
-
-    log.info("Spiderweb reset — level: %s (%d–%d)", level, lo, hi)
-    return jsonify({"status": "reset", "level": level})
 
 
 
@@ -363,6 +372,19 @@ def set_mode(mode):
 @app.route("/api/traffic-status")
 def traffic_status():
     return jsonify(get_traffic_status(get_mode()))
+
+
+@app.route("/api/spiderweb-reset", methods=["POST"])
+def spiderweb_reset():
+    data  = request.get_json()
+    level = data.get("level", "low")
+    seed_ranges = {"low": (5, 20), "moderate": (30, 55), "high": (60, 85)}
+    lo, hi = seed_ranges.get(level, (5, 20))
+    with _spider_lock:
+        for node in _spider_state:
+            _spider_state[node] = random.uniform(lo, hi)
+    log.info("Spiderweb reset — level: %s", level)
+    return jsonify({"status": "reset", "level": level})
 
 
 # ── Run ────────────────────────────────────────────────

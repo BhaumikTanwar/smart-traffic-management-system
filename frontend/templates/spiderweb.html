@@ -168,6 +168,8 @@
             <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Clear</div>
             <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div> Moderate</div>
             <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div> Congested</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#fff;border:2px solid #7c3aed;box-sizing:border-box"></div> Generator</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#fff;border:2px solid #0369a1;box-sizing:border-box"></div> Sink</div>
         </div>
         <div class="divider-v"></div>
         <div id="refresh-timer">3.0s</div>
@@ -237,13 +239,63 @@
 </div>
 
 <script>
-const map = L.map('map',{zoomControl:true}).setView([28.6139,77.2090],13);
+const map = L.map('map',{zoomControl:true}).setView([28.6250,77.2090],14);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-let nodes={A:{lat:28.61,lng:77.20},B:{lat:28.62,lng:77.21},C:{lat:28.63,lng:77.22},D:{lat:28.615,lng:77.19},E:{lat:28.625,lng:77.205}};
-let edges={A:["B","D"],B:["A","C","E"],C:["B"],D:["A","E"],E:["B","D"]};
-let markers={},polylines={},nodeCount=6,lastData={};
+let nodes={},edges={},roles={};
+let markers={},polylines={},nodeCount=0,lastData={};
 let selectedNode=null;
+let generators=[], sinks=[];
+
+// ── Loading overlay ───────────────────────────────────
+const loadDiv = document.createElement('div');
+loadDiv.style.cssText='position:absolute;inset:0;background:rgba(245,243,239,.85);z-index:600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;font-family:var(--font);backdrop-filter:blur(4px)';
+loadDiv.innerHTML='<div style="font-family:var(--serif);font-size:18px;color:#1a1814">Loading road network…</div><div style="font-size:12px;color:#a39f99">Fetching from OpenStreetMap</div>';
+document.getElementById('map-wrap').appendChild(loadDiv);
+
+// ── Fetch OSM network on load ─────────────────────────
+fetch('/api/osm-network')
+    .then(r=>r.json())
+    .then(net=>{
+        loadDiv.remove();
+        nodes      = net.nodes  || {};
+        edges      = net.edges  || {};
+        generators = net.generators || [];
+        sinks      = net.sinks      || [];
+
+        // Build roles map
+        for(const k in nodes) roles[k] = nodes[k].role || 'normal';
+
+        nodeCount = Object.keys(nodes).length + 1;
+
+        // Draw edges first (below markers)
+        for(const a in edges) edges[a].forEach(b => drawEdge(a,b));
+        // Draw markers
+        for(const k in nodes) markers[k] = makeMarker(k);
+
+        document.getElementById('m-nodes').textContent = Object.keys(nodes).length;
+        document.getElementById('m-edges').textContent = countEdges();
+        addFeed(`OSM network loaded — ${Object.keys(nodes).length} intersections`, '#2563eb');
+        addFeed(`${generators.length} generators · ${sinks.length} sinks`, '#6b6560');
+
+        update();
+    })
+    .catch(()=>{
+        loadDiv.remove();
+        // fallback to default nodes if OSM fails
+        nodes  = {A:{lat:28.61,lng:77.20,name:'A',role:'normal'},B:{lat:28.62,lng:77.21,name:'B',role:'generator'},C:{lat:28.63,lng:77.22,name:'C',role:'normal'},D:{lat:28.615,lng:77.19,name:'D',role:'sink'},E:{lat:28.625,lng:77.205,name:'E',role:'normal'}};
+        edges  = {A:["B","D"],B:["A","C","E"],C:["B"],D:["A","E"],E:["B","D"]};
+        generators=['B']; sinks=['D'];
+        for(const k in nodes) roles[k]=nodes[k].role||'normal';
+        nodeCount=6;
+        for(const k in nodes) markers[k]=makeMarker(k);
+        for(const a in edges) edges[a].forEach(b=>drawEdge(a,b));
+        document.getElementById('m-nodes').textContent=Object.keys(nodes).length;
+        document.getElementById('m-edges').textContent=countEdges();
+        addFeed('OSM unavailable — using fallback network','#d97706');
+        update();
+    });
+
 
 // ── Node history mini-chart ────────────────────────────
 const nodeHistoryChart = new Chart(
@@ -286,12 +338,23 @@ function getColor(v){
 }
 
 // ── Markers ───────────────────────────────────────────
+function markerStyle(key){
+    const role = roles[key] || 'normal';
+    if(role==='generator') return {radius:11, color:'#7c3aed', fillColor:'#a39f99', fillOpacity:1, weight:3};
+    if(role==='sink')      return {radius:11, color:'#0369a1', fillColor:'#a39f99', fillOpacity:1, weight:3};
+    return                        {radius:10, color:'#a39f99', fillColor:'#a39f99', fillOpacity:1, weight:2.5};
+}
+
 function makeMarker(key){
-    const m=L.circleMarker([nodes[key].lat,nodes[key].lng],{
-        radius:10,color:'#a39f99',fillColor:'#a39f99',fillOpacity:1,weight:2.5
-    }).addTo(map);
-    m.bindPopup(`<div style="font-family:'Playfair Display',serif;font-size:15px;font-weight:500;color:#1a1814;">${key}</div><div style="font-size:11px;color:#a39f99;margin-top:2px;">Intersection node</div>`);
-    // stop click from bubbling to map (prevents placing a node on inspect)
+    const m = L.circleMarker([nodes[key].lat, nodes[key].lng], markerStyle(key)).addTo(map);
+    const role    = roles[key] || 'normal';
+    const roleTag = role==='generator'
+        ? '<div style="font-size:10px;color:#7c3aed;font-weight:600;margin-top:2px">⬆ Generator</div>'
+        : role==='sink'
+        ? '<div style="font-size:10px;color:#0369a1;font-weight:600;margin-top:2px">⬇ Sink</div>'
+        : '';
+    const label = nodes[key].name || key;
+    m.bindPopup(`<div style="font-family:'Playfair Display',serif;font-size:15px;font-weight:500;color:#1a1814;">${label}</div>${roleTag}<div style="font-size:11px;color:#a39f99;margin-top:2px;">Intersection node</div>`);
     m.on('click', L.DomEvent.stopPropagation);
     return m;
 }
@@ -394,8 +457,9 @@ renderFlows();
 // ── Add node on map click ─────────────────────────────
 map.on('click',e=>{
     const name='N'+nodeCount++;
-    nodes[name]={lat:e.latlng.lat,lng:e.latlng.lng};
+    nodes[name]={lat:e.latlng.lat,lng:e.latlng.lng,name:name,role:'normal'};
     edges[name]=[];
+    roles[name]='normal';
     markers[name]=makeMarker(name);
     let nearest=null,minD=Infinity;
     for(let n in nodes){
@@ -473,14 +537,10 @@ function updateFlows(data){
     flowData = newFlow;
 }
 
-// ── Simulate local data (fallback when API returns randomness) ─
-// The real iterative propagation happens in app.py (3 rounds)
-// This just triggers the backend call
-
 function update(){
     fetch('/api/spiderweb-data',{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({nodes,edges}),signal:AbortSignal.timeout(2000)
+        body:JSON.stringify({nodes,edges,roles}),signal:AbortSignal.timeout(2000)
     })
     .then(r=>r.json())
     .then(data=>{
@@ -490,8 +550,16 @@ function update(){
             const val=data[node],prev=lastData[node]??-1,c=getColor(val);
             total+=val;
             if(val>hotVal){hotVal=val;hotNode=node;}
-            markers[node].setStyle({color:c.hex,fillColor:c.hex,radius:val>55?12:10,weight:val>55?3:2});
-            markers[node].bindPopup(`<div style="font-family:'Playfair Display',serif;font-size:15px;font-weight:500;color:#1a1814;">Node ${node}</div><div style="font-size:11px;color:${c.hex};margin-top:3px;font-weight:600">${c.label} · ${val}</div>`);
+            const role = roles[node] || 'normal';
+            const borderColor = role==='generator' ? '#7c3aed' : role==='sink' ? '#0369a1' : c.hex;
+            markers[node].setStyle({color:borderColor,fillColor:c.hex,radius:val>55?12:10,weight:val>55?3:2.5});
+            const label2 = nodes[node]?.name || node;
+            const roleTag2 = role==='generator'
+                ?'<div style="font-size:10px;color:#7c3aed;font-weight:600">⬆ Generator</div>'
+                : role==='sink'
+                ?'<div style="font-size:10px;color:#0369a1;font-weight:600">⬇ Sink</div>'
+                :'';
+            markers[node].bindPopup(`<div style="font-family:'Playfair Display',serif;font-size:15px;font-weight:500;color:#1a1814;">${label2}</div>${roleTag2}<div style="font-size:11px;color:${c.hex};margin-top:3px;font-weight:600">${c.label} · ${val}</div>`);
             markers[node].off('click').on('click',e=>{L.DomEvent.stopPropagation(e);showNode(node,val);});
 
             // feed on state change
@@ -535,47 +603,51 @@ function selectLevel(level, el){
 function confirmReset(){
     closeResetModal();
 
-    // 1. Tell backend to wipe state with chosen level
     fetch('/api/spiderweb-reset', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({level: selectedLevel})
     });
 
-    // 2. Remove all markers and polylines from map
-    for(let k in markers) markers[k].remove();
+    // Remove all markers and polylines
+    for(let k in markers)   markers[k].remove();
     for(let k in polylines) polylines[k].remove();
 
-    // 3. Reset to default nodes/edges
-    nodes    = {A:{lat:28.61,lng:77.20},B:{lat:28.62,lng:77.21},C:{lat:28.63,lng:77.22},D:{lat:28.615,lng:77.19},E:{lat:28.625,lng:77.205}};
-    edges    = {A:["B","D"],B:["A","C","E"],C:["B"],D:["A","E"],E:["B","D"]};
-    markers  = {};
-    polylines= {};
-    nodeCount= 6;
-    lastData = {};
-    flowData = {};
-    selectedNode = null;
+    nodes={};edges={};roles={};markers={};polylines={};
+    nodeCount=0;lastData={};flowData={};selectedNode=null;
+    generators=[];sinks=[];
 
-    // 4. Redraw
-    for(let k in nodes) markers[k] = makeMarker(k);
-    for(let a in edges) edges[a].forEach(b => drawEdge(a,b));
-
-    // 5. Reset inspector + feed
-    document.getElementById('node-content').innerHTML = 'Select a node on the map<br>to inspect its traffic state.';
+    document.getElementById('node-content').innerHTML='Select a node on the map<br>to inspect its traffic state.';
     document.getElementById('node-history-wrap').classList.remove('visible');
-    document.getElementById('m-nodes').textContent = Object.keys(nodes).length;
-    document.getElementById('m-edges').textContent = countEdges();
-    document.getElementById('m-avg').textContent   = '—';
-    document.getElementById('m-hot').textContent   = '—';
+    document.getElementById('m-avg').textContent='—';
+    document.getElementById('m-hot').textContent='—';
 
-    const levelLabels = {low:'Low traffic', moderate:'Moderate traffic', high:'High traffic'};
-    const levelColors = {low:'#16a34a', moderate:'#d97706', high:'#dc2626'};
-    addFeed(`Reset — ${levelLabels[selectedLevel]}`, levelColors[selectedLevel]);
+    const levelColors={low:'#16a34a',moderate:'#d97706',high:'#dc2626'};
+    addFeed(`Reset — reloading OSM network`, levelColors[selectedLevel]);
+    document.getElementById('hint').style.opacity='1';
 
-    document.getElementById('hint').style.opacity = '1';
+    // Re-fetch OSM network
+    const loadDiv2 = document.createElement('div');
+    loadDiv2.style.cssText='position:absolute;inset:0;background:rgba(245,243,239,.85);z-index:600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;font-family:var(--font);backdrop-filter:blur(4px)';
+    loadDiv2.innerHTML='<div style="font-family:var(--serif);font-size:18px;color:#1a1814">Reloading…</div>';
+    document.getElementById('map-wrap').appendChild(loadDiv2);
 
-    // Trigger immediate update
-    update();
+    fetch('/api/osm-network')
+        .then(r=>r.json())
+        .then(net=>{
+            loadDiv2.remove();
+            nodes=net.nodes||{};edges=net.edges||{};
+            generators=net.generators||[];sinks=net.sinks||[];
+            for(const k in nodes) roles[k]=nodes[k].role||'normal';
+            nodeCount=Object.keys(nodes).length+1;
+            for(const a in edges) edges[a].forEach(b=>drawEdge(a,b));
+            for(const k in nodes) markers[k]=makeMarker(k);
+            document.getElementById('m-nodes').textContent=Object.keys(nodes).length;
+            document.getElementById('m-edges').textContent=countEdges();
+            addFeed(`Network reloaded — ${Object.keys(nodes).length} nodes`,'#2563eb');
+            update();
+        })
+        .catch(()=>{ loadDiv2.remove(); update(); });
 }
 
 // Close modal on overlay click
@@ -591,7 +663,7 @@ setInterval(()=>{
 },100);
 
 setInterval(update,3000);
-update();
+// Note: first update() is called by OSM fetch callback, not here
 </script>
 </body>
 </html>
