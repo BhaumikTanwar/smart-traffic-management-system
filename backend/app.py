@@ -46,7 +46,7 @@ app = Flask(
 )
 app.secret_key = os.getenv("SECRET_KEY", "change-me-in-production")
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 init_db()
 

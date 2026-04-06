@@ -15,13 +15,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
 COPY dataset.csv ./
+COPY yolov8n.pt ./
 
 WORKDIR /app/backend
 
-EXPOSE 5000
+EXPOSE 7860
 
 CMD ["python", "-m", "gunicorn", \
      "--worker-class", "eventlet", \
      "-w", "1", \
-     "--bind", "0.0.0.0:5000", \
+     "--bind", "0.0.0.0:7860", \
      "app:app"]
